@@ -1,0 +1,18 @@
+count = 0
+
+udp = net.listen({
+    type:'udp',
+    bind:'127.0.0.1:9101',
+    on_message:fn(data,addr){
+        count++
+        if data == 'stop' {
+            println('udp_messages:' + count)
+            udp.close()
+        }
+    },
+    on_error:fn(err){
+        println(err)
+    }
+})
+
+println('udp stress server: ' + udp.addr)

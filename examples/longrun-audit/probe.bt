@@ -1,0 +1,28 @@
+timer = set_timeout(fn() {
+    1
+}, 1000)
+timer.cancel()
+
+t = task(fn(value) {
+    value + 1
+}, 41)
+
+if BT.OS == 'windows' {
+    child = process('cmd').args(['/C', 'echo probe']).child()
+} else {
+    child = process('sh').args(['-c', 'printf probe']).child()
+}
+
+child.wait()
+out = child.stdout_read()
+stats = BT.stats()
+
+assert(t.await() == 42, 'longrun probe task failed')
+assert(out.contains('probe'), 'longrun probe process failed')
+
+print json({
+    ok: true,
+    io_blocking_running: stats.io.blocking_running,
+    task_running: stats.task.running,
+    timer_active: stats.timer.active
+})

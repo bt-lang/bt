@@ -1,0 +1,14 @@
+/**
+ * Frontend call test function.
+ *
+ * @param data JSON object sent by the frontend.
+ * @return Greeting result.
+ */
+fn hello(data) {
+	echo('test123')
+    {
+        error: false,
+        message: 'Hello, ' + data.name,
+        data: data
+    }
+}

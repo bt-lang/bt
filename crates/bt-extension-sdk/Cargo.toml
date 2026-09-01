@@ -1,0 +1,17 @@
+[package]
+name = "bt-extension-sdk"
+version = "0.1.0"
+authors = ["Lifeng Yan"]
+license = "MIT OR Apache-2.0"
+homepage = "https://btlang.org"
+repository = "https://github.com/bt-lang/bt"
+edition = "2021"
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]

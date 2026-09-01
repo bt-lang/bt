@@ -1,0 +1,19 @@
+message_count = 5000
+payload = 'u'.repeat(512)
+
+udp = net.connect({
+    type:'udp',
+    host:'127.0.0.1',
+    port:9101
+})
+
+sent = 0
+for i in message_count {
+    udp.send(payload + ':' + i)
+    sent++
+}
+
+udp.send('stop')
+udp.close()
+
+println('udp_sent:' + sent)

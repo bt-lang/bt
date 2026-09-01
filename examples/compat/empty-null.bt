@@ -1,0 +1,23 @@
+user = {name: null}
+nums = [1, 2]
+text = 'BT'
+
+fn missing_arg(value) {
+    value
+}
+
+missing_item = nums.find(value -> value == 9)
+json_text = json({missing: empty, value: null})
+
+assert(is_null(user.name), 'explicit null should stay null')
+assert(is_empty(user.age), 'missing object field should be empty')
+assert(is_empty(nums[99]), 'array out of bounds should be empty')
+assert(is_empty(text[99]), 'string out of bounds should be empty')
+assert(is_empty(missing_item), 'find miss should be empty')
+assert(is_empty(missing_arg()), 'missing argument should be empty')
+assert(is_null(number('abc')), 'number parse failure should be null')
+assert(json_text == '{"missing":null,"value":null}', 'empty should serialize to JSON null')
+
+print empty
+println null
+println 'compat-empty-null:ok'

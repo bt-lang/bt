@@ -1,0 +1,25 @@
+fn make_adder(base) {
+    adder = fn(value) {
+        base + value
+    }
+    adder
+}
+
+add = make_adder(7)
+items = []
+
+for i in 50000 {
+    items.push(i)
+}
+
+mapped = items
+    .map(value -> add(value))
+    .filter(value -> value % 17 == 0)
+
+total = 0
+for value in mapped {
+    total += value
+}
+
+assert(mapped.len() > 0, 'function closure benchmark length failed')
+assert(total > 0, 'function closure benchmark total failed')

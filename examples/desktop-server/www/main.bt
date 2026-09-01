@@ -1,0 +1,11 @@
+if web.url == 'api' {
+    web.header({'Content-Type': 'application/json;charset=utf-8'})
+    {
+        error: false,
+        message: 'server ok',
+        method: web.server.method,
+        path: web.url
+    }
+} else {
+    include('index.bt')
+}

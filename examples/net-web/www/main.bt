@@ -1,0 +1,6 @@
+/**
+ * net.listen web request entry point.
+ *
+ * @return Test response for the current request.
+ */
+'net web ok: ' + web.url

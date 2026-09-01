@@ -1,0 +1,7 @@
+[[permission]]
+identifier = "allow-event-listener"
+description = "Allow the BT frontend bridge to subscribe and unsubscribe from application events dispatched by the native layer."
+commands.allow = [
+  "plugin:event|listen",
+  "plugin:event|unlisten",
+]

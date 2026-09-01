@@ -1,0 +1,26 @@
+/**
+ * Echo frontend data to verify window.bt.call JSON arguments and results.
+ *
+ * @param data JSON object sent by the frontend.
+ * @return Standard JSON object.
+ */
+fn inspect(data) {
+    {
+        ok: true,
+        message: 'The BT backend received the data',
+        data: data
+    }
+}
+
+/**
+ * Add two numbers to verify ordinary BT function results from the frontend.
+ *
+ * @param args Object containing a and b.
+ * @return Sum result object.
+ */
+fn add(args) {
+    {
+        ok: true,
+        result: args.a + args.b
+    }
+}

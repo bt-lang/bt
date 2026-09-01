@@ -1,0 +1,18 @@
+{
+    "api_version": 1,
+    "functions": [
+        {
+            "name": "spin",
+            "id": 1,
+            "params": [],
+            "returns": "int"
+        },
+        {
+            "name": "answer",
+            "id": 2,
+            "params": [],
+            "returns": "int"
+        }
+    ],
+    "objects": []
+}

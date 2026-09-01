@@ -1,0 +1,25 @@
+if_value = if true {
+    left = 1
+    left + 2
+} else {
+    0
+}
+
+fn block_value() {
+    value = 4
+    value + 5
+}
+
+fn forced_value() {
+    return 'forced'
+    'bad'
+}
+
+include_value = include('block-return-fixture.bt')
+
+assert(if_value == 3, 'if block return value changed')
+assert(block_value() == 9, 'fn block return value changed')
+assert(forced_value() == 'forced', 'return should force function result')
+assert(include_value == 42, 'include return value changed')
+
+print 'compat-block-return:ok'

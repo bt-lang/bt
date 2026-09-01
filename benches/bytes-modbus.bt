@@ -1,0 +1,9 @@
+frame = bytes({hex: '010304000a0014da3e'})
+total = 0
+
+for i in 20000 {
+    parsed = modbus.parse_rtu(frame)
+    total += parsed.registers[0]
+}
+
+assert(total == 200000, 'bytes modbus benchmark failed')

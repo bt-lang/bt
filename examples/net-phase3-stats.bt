@@ -1,0 +1,7 @@
+stats = BT.stats()
+
+println('event_queue_bounded:' + stats.net.event_queue_bounded)
+println('event_queue_limit:' + stats.net.event_queue_limit)
+println('message_limit:' + stats.net.message_limit)
+println('write_queue_limit:' + stats.net.write_queue_limit)
+println('idle_ttl_ms:' + stats.net.idle_ttl_ms)

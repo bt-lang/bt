@@ -1,0 +1,21 @@
+client = net.connect({
+    type:'tcp',
+    host:'127.0.0.1',
+    port:9000,
+    timeout:3000
+})
+
+ok = 0
+
+for i in 100 {
+    text = 'ping' + i
+    client.write(text)
+    if client.read() == 'echo:' + text {
+        ok++
+    }
+}
+
+client.close()
+
+// Output: 100
+print ok

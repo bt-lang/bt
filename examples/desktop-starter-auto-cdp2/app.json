@@ -1,0 +1,30 @@
+{
+  "app": {
+    "name": "StarterAutoCdpDemo2",
+    "title": "Starter Auto CDP Demo 2",
+    "version": "1.0.0",
+    "mode": "static",
+    "entry": "index.html",
+    "main": "main.bt"
+  },
+  "window": {
+    "width": 900,
+    "height": 700,
+    "resizable": true,
+    "fullscreen": false,
+    "hide_titlebar": false,
+    "always_on_top": false
+  },
+  "dev": {
+    "watch": true,
+    "delay": 500,
+    "devtools": true,
+    "console": true
+  },
+  "resources": [
+    "app.json",
+    "index.html",
+    "main.bt"
+  ],
+  "exclude": []
+}

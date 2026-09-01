@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "project_owned": [
+    ".github/assets/cat_animated.svg",
+    "examples/desktop-api/assets/app.js",
+    "examples/desktop-html/main.js",
+    "examples/desktop-icon-appjson/icon/my.ico",
+    "examples/desktop-icon-html/logo.ico",
+    "examples/desktop-server/www/static/app.js",
+    "examples/desktop/assets/app.js",
+    "examples/desktop/assets/icon.png",
+    "src-tauri/icons/app.ico",
+    "src-tauri/icons/bt.ico",
+    "src-tauri/icons/file.ico",
+    "src-tauri/icons/icon.png"
+  ],
+  "bundled_packages": [
+    {
+      "path": "examples/extension-development/extensions/sqlite.bts",
+      "notice": "examples/extension-development/sqlite/THIRD_PARTY_LICENSES.txt"
+    },
+    {
+      "path": "examples/extension-development/sqlite/sqlite-1.0.0.bts",
+      "notice": "examples/extension-development/sqlite/THIRD_PARTY_LICENSES.txt"
+    }
+  ]
+}

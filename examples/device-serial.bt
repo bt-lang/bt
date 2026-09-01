@@ -1,0 +1,4 @@
+ports = device.scan('serial')
+println(ports)
+println(device.list())
+pause()

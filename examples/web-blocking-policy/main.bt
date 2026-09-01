@@ -1,0 +1,21 @@
+/**
+ * Web blocking-API policy example.
+ *
+ * @return Starts a local web service.
+ */
+net.listen({
+    type:'web',
+    bind:'127.0.0.1:18281',
+    sites:[
+        {
+            domains:['127.0.0.1'],
+            root:'www/',
+            entry:'main.bt',
+            upload:{
+                temp:'temp/'
+            }
+        }
+    ]
+})
+
+println('web blocking policy: http://127.0.0.1:18281/')

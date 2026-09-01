@@ -1,0 +1,6 @@
+[[permission]]
+identifier = "allow-bt-call"
+description = "Allow the BT frontend bridge to call BT functions registered in `app.main`."
+commands.allow = [
+  "bt_call",
+]

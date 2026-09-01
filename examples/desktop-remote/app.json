@@ -1,0 +1,29 @@
+{
+  "app": {
+    "name": "RemoteDemo",
+    "title": "BT Remote Demo",
+    "version": "1.0.0",
+    "mode": "remote",
+    "entry": "https://btlang.org",
+    "main": "main.bt"
+  },
+  "window": {
+    "width": 900,
+    "height": 700,
+    "resizable": true,
+    "fullscreen": false,
+    "hide_titlebar": false,
+    "always_on_top": false
+  },
+  "dev": {
+    "watch": true,
+    "delay": 500,
+    "devtools": false,
+    "console": false
+  },
+  "resources": [
+    "app.json",
+    "main.bt"
+  ],
+  "exclude": []
+}

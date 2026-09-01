@@ -1,0 +1,25 @@
+{
+    "format": "bts",
+    "format_version": 1,
+    "name": "shared_timeout",
+    "version": "1.0.0",
+    "description": "shared runtime timeout example",
+    "author": "",
+    "kind": "wasm",
+    "abi": "bts-wasi-1",
+    "bt_min_version": "1.1.0",
+    "api_version": 1,
+    "entry": "module.wasm",
+    "bindings": "bindings.json",
+    "permissions": [],
+    "runtime": {
+        "mode": "shared",
+        "workers": 1,
+        "queue_limit": 8,
+        "call_timeout_ms": 200,
+        "idle_ttl_ms": 300000,
+        "max_objects": 16,
+        "max_worker_objects": 16,
+        "max_inflight_calls": 4
+    }
+}

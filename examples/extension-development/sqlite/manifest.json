@@ -1,0 +1,29 @@
+{
+    "format": "bts",
+    "format_version": 1,
+    "name": "sqlite",
+    "version": "1.0.0",
+    "description": "BT SQLite extension library",
+    "author": "Lifeng Yan",
+    "kind": "wasm",
+    "abi": "bts-wasi-1",
+    "bt_min_version": "1.1.1",
+    "api_version": 1,
+    "entry": "module.wasm",
+    "bindings": "bindings.json",
+    "permissions": ["fs_read", "fs_write"],
+    "limits": {
+        "max_args_bytes": 16777216,
+        "max_result_bytes": 16777216
+    },
+    "runtime": {
+        "mode": "shared",
+        "workers": 2,
+        "queue_limit": 64,
+        "call_timeout_ms": 2000,
+        "idle_ttl_ms": 300000,
+        "max_objects": 1024,
+        "max_worker_objects": 512,
+        "max_inflight_calls": 16
+    }
+}

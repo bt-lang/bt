@@ -1,0 +1,19 @@
+fs('@/data').create_dir()
+
+db = sqlite_open('@/data/ext-install-demo.db', {
+    wal: true,
+    busy_timeout_ms: 1000,
+    max_rows: 100,
+    max_result_bytes: 1048576
+})
+
+db.exec('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)', [])
+db.exec('DELETE FROM users', [])
+db.exec('INSERT INTO users (name) VALUES (?)', ['Alice'])
+
+row = db.one('SELECT name FROM users WHERE id = ?', [1])
+
+// Output: Alice
+print row.name
+
+db.close()

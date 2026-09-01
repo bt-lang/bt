@@ -1,0 +1,33 @@
+class Counter {
+    value: 0
+
+    new(start = 0) {
+        this.value = start
+        this
+    }
+
+    pub inc(step = 1) {
+        this.value += step
+        this
+    }
+
+    pub get() {
+        this.value
+    }
+}
+
+fn make_adder(base) {
+    adder = fn(value) {
+        base + value
+    }
+    adder
+}
+
+counter = Counter::new(1).inc().inc(3)
+add = make_adder(5)
+result = [1, 2, 3].map(value -> add(value)).filter(value -> value > 6).join('|')
+
+assert(counter.get() == 5, 'class chain call changed')
+assert(result == '7|8', 'closure callback chain changed')
+
+print 'compat-chain-class-closure:ok'

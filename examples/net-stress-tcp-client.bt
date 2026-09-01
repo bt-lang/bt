@@ -1,0 +1,36 @@
+message_count = 1000
+round_count = 3
+payload = 't'.repeat(256)
+ok = 0
+
+for round in round_count {
+    client = net.connect({
+        type:'tcp',
+        host:'127.0.0.1',
+        port:9100,
+        timeout:3000
+    })
+
+    for i in message_count {
+        text = payload + ':' + round + ':' + i
+        client.write(text)
+        if client.read() == 'echo:' + text {
+            ok++
+        }
+    }
+
+    client.close()
+    sleep(50)
+}
+
+client = net.connect({
+    type:'tcp',
+    host:'127.0.0.1',
+    port:9100,
+    timeout:3000
+})
+client.write('stop')
+client.close()
+
+expected = message_count * round_count
+println('tcp_ok:' + ok + '/' + expected)

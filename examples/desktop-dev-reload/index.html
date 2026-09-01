@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BT Dev Reload Demo</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+      background: #f6f7f9;
+      color: #20242c;
+    }
+
+    main {
+      width: min(100% - 32px, 760px);
+      margin: 56px auto;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: 28px;
+    }
+
+    button {
+      height: 38px;
+      border: 1px solid #1f6feb;
+      border-radius: 6px;
+      padding: 0 16px;
+      background: #1f6feb;
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    pre {
+      min-height: 120px;
+      margin-top: 18px;
+      padding: 14px;
+      overflow: auto;
+      border: 1px solid #d0d5dd;
+      border-radius: 6px;
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>BT Dev Reload Demo</h1>
+    <p>After you edit and save index.html or main.bt, the window reloads and runs the BT script again.</p>
+    <button id="hello" type="button">Call hello</button>
+    <pre id="output">ready</pre>
+  </main>
+  <script>
+    const output = document.querySelector("#output");
+    document.querySelector("#hello").addEventListener("click", async () => {
+      const result = await window.bt.call("hello", {
+        name: "BT",
+        time: new Date().toISOString()
+      });
+      output.textContent = JSON.stringify(result, null, 2);
+    });
+  </script>
+</body>
+</html>

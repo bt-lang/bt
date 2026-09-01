@@ -1,0 +1,120 @@
+[package]
+name = "bt"
+version = "1.1.3"
+authors = ["Lifeng Yan"]
+license = "MIT OR Apache-2.0"
+edition = "2021"
+description = "A compact interpreted language runtime with CLI, web, desktop, FFI, and extension support"
+homepage = "https://btlang.org"
+repository = "https://github.com/bt-lang/bt"
+keywords = ["programming-language", "interpreter", "virtual-machine", "desktop"]
+categories = ["compilers", "command-line-utilities"]
+publish = false
+build = "build.rs"
+autobins = false
+default-run = "bt"
+
+[workspace]
+members = [".", "crates/bt-extension-sdk", "crates/bt-ffi-testlib"]
+resolver = "2"
+
+[workspace.lints.rust]
+warnings = "deny"
+
+[lints]
+workspace = true
+
+[features]
+default = ["extensions", "ffi"]
+extensions = ["dep:zip", "dep:wasmparser", "dep:wasmtime", "dep:wasmtime-wasi"]
+ffi = ["dep:libffi", "dep:libloading"]
+quic = ["salvo/quinn"]
+desktop = [
+    "dep:zip",
+    "dep:tauri",
+    "dep:notify",
+    "dep:xcap",
+    "dep:tauri-plugin-dialog",
+    "dep:tauri-plugin-clipboard-manager",
+    "dep:tauri-plugin-global-shortcut",
+    "dep:tauri-plugin-notification",
+    "dep:tauri-plugin-opener",
+    "dep:notify-rust",
+    "dep:tauri-runtime",
+]
+
+[[bin]]
+name = "bt"
+path = "src/bt_cli_main.rs"
+
+[[bin]]
+name = "bt_app"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+# Used primarily to add Windows executable resources (metadata and icons).
+[build-dependencies]
+winresource = "0.1"
+tauri-utils = { version = "=2.9.3", features = ["build-2"] }
+serde = "1.0.211"
+serde_json = "1.0.132"
+
+# Favor a compact release binary.
+[profile.release]
+opt-level = "z"          # Optimize for size (s or z; z is more aggressive).
+lto = true               # Link-time optimization removes unused code.
+codegen-units = 1        # Fewer parallel codegen units allow better optimization.
+strip = true             # Strip symbols to reduce binary size by roughly 30-50%.
+panic = "abort"          # Omit panic stack-unwinding code.
+
+[dependencies]
+salvo = { package = "salvo_core", version = "0.96.0", default-features = false, features = ["server", "server-handle", "http1", "http2", "fix-http1-request-uri", "matched-path", "cookie", "rustls", "ring", "tls12"] }
+salvo_extra = { version = "0.96.0", default-features = false, features = ["affix-state"] }
+salvo-session = { version = "0.96.0", default-features = false }
+salvo-serve-static = { version = "0.96.0", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["json", "mysql", "chrono", "runtime-tokio", "tls-rustls-ring-webpki"] }
+tokio = { version = "1.41.0", features = ["full"] }
+tokio-tungstenite = "0.29.0"
+futures-util = "0.3"
+url = "2.5.2"
+regex = "1.11.0"
+chrono = "0.4.44"
+serde = { version = "1.0.211", features = ["derive"] }
+serde_json = "1.0.132"
+serde_regex = "1.1.0"
+glob = "0.3"
+zip = { version = "2.4.2", default-features = false, features = ["deflate"], optional = true }
+wasmparser = { version = "0.251.0", default-features = false, features = ["std"], optional = true }
+wasmtime = { version = "46.0.1", default-features = false, features = ["cache", "cranelift", "runtime", "std"], optional = true }
+wasmtime-wasi = { version = "46.0.1", default-features = false, features = ["p1"], optional = true }
+notify = { version = "8.2.0", optional = true }
+tauri = { version = "=2.11.5", features = ["devtools", "image-ico", "macos-private-api", "tray-icon", "unstable"], optional = true }
+tauri-runtime = { version = "=2.11.3", optional = true }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+indexmap = { version = "2.6.0", features = ["serde"] }
+num_cpus = "1.16.0"
+console = "0.16.3"
+rand = "0.10.1"
+md5 = "0.8.0"
+sha2 = "0.10"
+hmac = "0.12"
+uuid = { version = "1.11", features = ["v4"] }
+base64 = "0.22"
+reqwest = { version = "0.13.2", default-features = false, features = ["charset", "cookies", "form", "http2", "json", "multipart", "rustls-no-provider", "stream", "system-proxy"] }
+serialport = "4.9.0"
+tungstenite = "0.29.0"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+libffi = { version = "5.1.1", optional = true }
+libloading = { version = "0.9.0", optional = true }
+tauri-plugin-dialog = { version = "2.7.1", optional = true }
+tauri-plugin-clipboard-manager = { version = "2.3.2", optional = true }
+tauri-plugin-global-shortcut = { version = "=2.3.2", optional = true }
+tauri-plugin-notification = { version = "2.3.3", optional = true }
+tauri-plugin-opener = { version = "2.5.4", optional = true }
+notify-rust = { version = "4.17.0", optional = true }
+xcap = { version = "=0.9.8", default-features = false, optional = true }
+
+[dev-dependencies]
+wat = { version = "=1.251.0", default-features = false }

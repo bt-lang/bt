@@ -1,0 +1,7 @@
+[[permission]]
+identifier = "allow-project-bootstrap"
+description = "Allow the startup bootstrap page to create a desktop project and restart the current app when `app.json` is missing."
+commands.allow = [
+  "project_create",
+  "project_restart",
+]

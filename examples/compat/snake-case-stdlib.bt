@@ -1,0 +1,13 @@
+text = '  HELLO BT  '
+normalized = text.trim_start().trim_end().to_lowercase()
+joined = path('root').join('docs', 'index.md')
+encoded = base64('BT').encode()
+
+assert(normalized == 'hello bt', 'string snake_case methods changed')
+assert(joined == 'root/docs/index.md', 'path.join changed')
+assert(encoded == 'QlQ=', 'base64.encode changed')
+assert([].is_empty(), 'Array.is_empty changed')
+assert({}.is_empty(), 'Object.is_empty changed')
+assert(Math.pow(2, 3) == 8, 'Math.pow changed')
+
+print 'compat-snake-case-stdlib:ok'

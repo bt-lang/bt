@@ -1,0 +1,24 @@
+ws = net.connect({
+    type:'ws',
+    url:'ws://127.0.0.1:8081/ws'
+})
+
+count = 0
+
+ws.on_message(fn(data){
+    println('Received server message: ' + data)
+    count++
+    if count >= 2 {
+        ws.close()
+    }
+})
+
+ws.on_close(fn(){
+    println('Connection closed')
+})
+
+ws.on_error(fn(err){
+    println(err)
+})
+
+ws.send('hello')

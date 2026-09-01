@@ -1,0 +1,12 @@
+udp = net.listen({
+    type:'udp',
+    bind:'127.0.0.1:9001',
+    on_message:fn(data,addr){
+        udp.send('echo:' + data, addr.addr)
+    },
+    on_error:fn(err){
+        println(err)
+    }
+})
+
+println('udp started')

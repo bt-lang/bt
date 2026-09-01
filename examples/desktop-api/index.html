@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BT Desktop API Demo</title>
+  <link rel="stylesheet" href="assets/style.css" />
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <section class="topbar">
+      <div>
+        <h1>BT Desktop API Demo</h1>
+        <p id="runtime">loading</p>
+      </div>
+      <button id="clear-log" type="button">Clear</button>
+    </section>
+
+    <section class="grid">
+      <button data-action="bt-call" type="button">Call BT</button>
+      <button data-action="call-error" type="button">Return Error</button>
+      <button data-action="app-info" type="button">App Info</button>
+      <button data-action="clipboard" type="button">Clipboard</button>
+      <button data-action="window-title" type="button">Window Title</button>
+      <button data-action="window-size" type="button">Window Size</button>
+      <button data-action="window-state" type="button">Window State</button>
+      <button data-action="always-top" type="button">Toggle Always on Top</button>
+      <button data-action="notify" type="button">System Notification</button>
+      <button data-action="dialog-message" type="button">Message Dialog</button>
+      <button data-action="dialog-confirm" type="button">Confirmation Dialog</button>
+      <button data-action="tray" type="button">Enable Tray</button>
+      <button data-action="close-tray" type="button">Close to Tray</button>
+      <button data-action="pick-file" type="button">Choose File</button>
+      <button data-action="pick-dir" type="button">Choose Directory</button>
+    </section>
+
+    <section id="drop-zone" class="drop-zone">
+      <strong>Drop a file or directory</strong>
+      <span>Its path will appear in the log</span>
+    </section>
+
+    <pre id="log"></pre>
+  </main>
+</body>
+</html>

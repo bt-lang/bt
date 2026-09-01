@@ -1,0 +1,22 @@
+Copyright 2026 Lifeng Yan
+
+Lifeng Yan (闫立峰), also known as Eria Matus, is the original author and
+copyright owner of the BT Language project.
+
+BT is dual-licensed under Apache 2.0 and MIT terms. Copyrights in subsequent
+contributions are retained by their contributors. No copyright assignment is
+required to contribute to the BT Language project.
+
+Some files include explicit copyright notices and/or license notices. For full
+authorship information, see the version control history.
+
+Except as otherwise noted, BT is licensed under the Apache License, Version 2.0
+<LICENSE-APACHE> or <https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+license <LICENSE-MIT> or <https://opensource.org/license/mit>, at your option.
+
+Third-party source files and other materials retain their original copyright
+notices and license terms. See <THIRD_PARTY_LICENSES.txt> for the reproducible
+dependency inventory, retained license texts, bundled native-code notices, and
+the non-Rust asset boundary. The BT licenses do not relicense third-party
+material. Binary distributions must include the notices required by the exact
+components, target, and feature set included in that distribution.

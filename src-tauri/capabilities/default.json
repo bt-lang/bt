@@ -1,0 +1,21 @@
+{
+  "identifier": "default",
+  "description": "BT desktop default capability",
+  "remote": {
+    "urls": [
+      "http://*/*",
+      "https://*/*",
+      "http://*:*/*",
+      "https://*:*/*"
+    ]
+  },
+  "windows": ["main"],
+  "permissions": [
+    "allow-event-listener",
+    "allow-window-control",
+    "allow-bt-call",
+    "allow-project-bootstrap",
+    "allow-desktop-api",
+    "allow-screen-tools"
+  ]
+}

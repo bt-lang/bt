@@ -1,0 +1,31 @@
+{
+  "app": {
+    "name": "IconHtmlDemo",
+    "title": "BT HTML Icon Acceptance",
+    "version": "1.0.0",
+    "mode": "static",
+    "entry": "index.html",
+    "icon": "logo.ico",
+    "main": false
+  },
+  "window": {
+    "width": 800,
+    "height": 500,
+    "resizable": true,
+    "fullscreen": false,
+    "hide_titlebar": false,
+    "always_on_top": false
+  },
+  "dev": {
+    "watch": true,
+    "delay": 500,
+    "devtools": true,
+    "console": true
+  },
+  "resources": [
+    "app.json",
+    "index.html",
+    "logo.ico"
+  ],
+  "exclude": []
+}

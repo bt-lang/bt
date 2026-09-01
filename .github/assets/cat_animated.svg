@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="500"
+   height="500"
+   viewBox="0 0 132.29166 132.29167"
+   version="1.1"
+   id="svg1"
+   xml:space="preserve"
+   sodipodi:docname="cat_animated.svg"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"><sodipodi:namedview
+   id="namedview1"
+   pagecolor="#ffffff"
+   bordercolor="#000000"
+   borderopacity="0.25"
+   inkscape:showpageshadow="2"
+   inkscape:pageopacity="0.0"
+   inkscape:pagecheckerboard="0"
+   inkscape:deskcolor="#d1d1d1"
+   inkscape:document-units="mm"
+   inkscape:zoom="0.36409849"
+   inkscape:cx="-836.31218"
+   inkscape:cy="-276.02422"
+   inkscape:window-width="1920"
+   inkscape:window-height="1009"
+   inkscape:window-x="-8"
+   inkscape:window-y="-8"
+   inkscape:window-maximized="1"
+   inkscape:current-layer="layer2" /><defs
+   id="defs1" />
+<style
+   id="cat-animation-css"><![CDATA[
+  /* Blink by briefly squashing both eyes. */
+  #layer4 {
+    transform-box: fill-box;
+    transform-origin: center center;
+    animation: cat-blink 4.2s infinite;
+  }
+  #path5,
+	#ellipse6 {
+	  transform-box: fill-box;
+	  transform-origin: center center;
+	  animation: pupil-look 5.2s ease-in-out infinite;
+	}
+	@keyframes pupil-look {
+	  0%, 18% {
+		transform: translate(0, 0);
+	  }
+
+	  28%, 42% {
+		transform: translate(2.2px, -0.4px);
+	  }
+
+	  52%, 64% {
+		transform: translate(4.2px, 0.2px);
+	  }
+
+	  74%, 84% {
+		transform: translate(1.2px, 0.5px);
+	  }
+
+	  100% {
+		transform: translate(0, 0);
+	  }
+	}
+
+  @keyframes cat-blink {
+    0%, 88%, 92%, 100% { transform: scaleY(1); }
+    90% { transform: scaleY(0.08); }
+  }
+
+  /* Let the tail sway gently around its base. */
+  #path6 {
+    transform-box: fill-box;
+    transform-origin: 6% 70%;
+    animation: tail-wag 1.25s ease-in-out infinite;
+  }
+
+  @keyframes tail-wag {
+    0%, 100% { transform: rotate(-4deg); }
+    50% { transform: rotate(5deg); }
+  }
+]]></style><g
+   inkscape:groupmode="layer"
+   id="layer2"
+   inkscape:label="Cat body"
+   style="display:inline"><path
+     style="display:inline;fill:#000000;stroke-width:0.264583"
+     d="m 83.604657,101.25343 c 0,0 20.614553,8.76118 30.406463,-6.442052 4.6512,-6.429118 1.09355,-13.017037 -3.80404,-13.7628 -5.73894,-0.873876 -6.77505,4.546858 -5.66577,5.90351 0.58112,0.710709 1.45631,1.645043 2.94794,0.50377 1.51133,-1.156334 3.75179,-0.11727 3.62295,1.87978 -0.12884,1.99704 -2.74752,5.782805 -9.31455,3.280873 -6.49773,-2.475532 -6.636787,-16.094744 2.5504,-18.290843 9.99153,-2.388369 20.48182,3.600237 18.95634,16.227499 -0.9026,7.471339 -8.30625,19.164233 -22.86147,20.320753 -13.22954,1.05119 -19.411655,-3.17883 -19.411655,-3.17883 -3.257383,-4.95099 2.573392,-6.44166 2.573392,-6.44166 z"
+     id="path6"
+     inkscape:label="Tail"
+     sodipodi:nodetypes="ccsssssssccc" /><path
+     style="display:inline;fill:#000000;stroke-width:0.264583"
+     d="m 23.627851,37.463728 c 0,0 3.279754,-13.48344 8.381595,-17.49203 4.373007,2.55092 9.474845,13.48344 9.474845,13.48344 0,0 12.025768,-4.73743 29.153376,0.72883 4.73742,-7.65276 11.29693,-12.7546 12.39018,-13.48343 1.09325,-0.72884 5.37516,1.27546 6.10399,21.95613 3.64417,3.55307 11.737513,15.82157 7.6146,27.93262 -4.89596,11.338 -14.43019,13.39945 -20.87223,13.91482 3.86522,2.8345 7.73045,16.749322 7.73045,16.749322 0,0 0.718372,2.66033 -1.41725,6.3132 0,0 -0.90188,2.96334 -3.73638,3.86523 -2.8345,0.90189 -10.43612,2.70566 -10.30728,-0.6442 0,-0.90189 -0.55807,-0.39495 -0.55807,-0.39495 0,0 -2.91534,0.77439 -5.2385,0.0911 -0.77439,0.91104 -0.68328,2.59647 -3.461965,2.55092 -2.550919,-0.22776 -2.824234,-1.54878 -2.323158,-3.41641 -1.548773,-0.86549 -2.505369,-1.18436 -3.051995,-1.59433 -0.501073,1.18436 -1.184355,4.32746 -4.464111,3.59862 -3.553066,-1.1388 -2.095397,-3.73528 -1.09325,-4.2819 -0.455523,-2.59647 -0.681181,-5.31425 -2.098429,-8.792952 -1.159568,-2.57682 -1.159568,-7.21509 -0.515364,-10.43612 -4.509434,-0.77304 -35.4312561,-3.86523 -27.958483,-24.22209 -3.865226,-5.41132 -7.088965,-17.03389 6.247429,-26.42583 z"
+     id="path1"
+     inkscape:label="Body"
+     sodipodi:nodetypes="ccccscccccsccccccccccccc" /></g><g
+   inkscape:groupmode="layer"
+   id="layer3"
+   inkscape:label="Whiskers"><path
+     style="fill:#000000;stroke-width:0.264583"
+     d="m 16.703925,68.530288 -9.2015341,-1.09325 c 0,0 -1.184357,0.72883 -0.0911,1.73098 1.730981,-0.18221 9.1104301,0.54663 9.1104301,0.54663 z"
+     id="path2"
+     inkscape:label="Second whisker" /><path
+     style="fill:#000000;stroke-width:0.264583"
+     d="m 17.122742,73.101688 c 0,0 -9.2765491,2.77007 -8.6967651,4.38058 0.515366,1.35284 2.5768201,-0.25768 3.4787081,-0.70862 0.901885,-0.45094 4.380589,-2.38356 5.475737,-2.44798 -0.128839,-0.6442 -0.25768,-1.22398 -0.25768,-1.22398 z"
+     id="path3"
+     inkscape:label="First whisker" /></g><g
+   inkscape:groupmode="layer"
+   id="layer4"
+   inkscape:label="Eyes"><ellipse
+     style="fill:#ffffff;stroke-width:0.337994"
+     id="path4"
+     cx="32.197128"
+     cy="53.467247"
+     rx="14.816708"
+     ry="15.074389"
+     inkscape:label="Left eye white" /><ellipse
+     style="fill:#000000;stroke-width:0.264583"
+     id="path5"
+     cx="25.110893"
+     cy="57.189842"
+     rx="5.1536369"
+     ry="6.1843643"
+     inkscape:label="Left pupil" /><ellipse
+     style="fill:#ffffff;stroke-width:0.343821"
+     id="ellipse5"
+     cx="68.787964"
+     cy="53.209572"
+     rx="15.074389"
+     ry="15.332071"
+     inkscape:label="Right eye white" /><ellipse
+     style="fill:#000000;stroke-width:0.264583"
+     id="ellipse6"
+     cx="61.444038"
+     cy="57.189842"
+     rx="5.1536369"
+     ry="6.1843643"
+     inkscape:label="Right pupil" /></g></svg>

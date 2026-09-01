@@ -1,0 +1,44 @@
+library_path = if BT.OS == 'windows' {
+    '../../target/debug/bt_ffi_testlib.dll'
+} elseif BT.OS == 'linux' {
+    '../../target/debug/libbt_ffi_testlib.so'
+} else {
+    '../../target/debug/libbt_ffi_testlib.dylib'
+}
+
+baseline = BT.stats().ffi
+testlib = ffi.load(library_path, {
+    bt_ffi_add_i32: 'i32(i32, i32)',
+    bt_ffi_write_bt: 'i32(ptr)'
+})
+
+total = 0
+for _ in 1000000 {
+    total += testlib.bt_ffi_add_i32(1, 2)
+}
+
+buffer = ffi.buffer(16)
+written = testlib.bt_ffi_write_bt(buffer)
+text = buffer.to_string()
+ffi.close(buffer)
+ffi.close(testlib)
+
+for _ in 1000 {
+    reopened = ffi.load(library_path, {
+        bt_ffi_add_i32: 'i32(i32, i32)'
+    })
+    assert(reopened.bt_ffi_add_i32(1, 2) == 3)
+    ffi.close(reopened)
+}
+
+after = BT.stats().ffi
+
+assert(total == 3000000)
+assert(written == 3)
+assert(text == 'BT')
+assert(after.open_libraries == baseline.open_libraries)
+assert(after.buffers == baseline.buffers)
+assert(after.buffer_bytes == baseline.buffer_bytes)
+
+// Output: FFI declared-call long-run verification passed
+print 'FFI declared-call long-run verification passed'

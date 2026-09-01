@@ -1,0 +1,16 @@
+packet = modbus.tcp_request({
+    transaction_id: 1,
+    unit_id: 1,
+    function: 'read_holding_registers',
+    address: 0,
+    quantity: 2
+})
+
+response = bytes([0, 1, 0, 0, 0, 7, 1, 3, 4, 0, 10, 0, 20])
+parsed = modbus.parse_tcp(response)
+
+// Output: 000100000006010300000002
+println(packet.to_hex())
+
+// Output: 10
+println(parsed.registers[0])

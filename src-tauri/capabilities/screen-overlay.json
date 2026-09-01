@@ -1,0 +1,9 @@
+{
+  "identifier": "screen-overlay",
+  "description": "BT built-in screen selection overlay capability",
+  "remote": {
+    "urls": ["http://bt.app/*"]
+  },
+  "windows": ["bt-screen-overlay-*"],
+  "permissions": ["allow-screen-overlay"]
+}

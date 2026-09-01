@@ -1,0 +1,13 @@
+stats = BT.stats()
+http_limit = stats.http.config.pool_limit
+mysql_max_connections = stats.mysql.config.max_connections
+mysql_transactions_active = stats.mysql.transactions_active
+
+// Output: 32
+println http_limit
+
+// Output: 8
+println mysql_max_connections
+
+// Output: 0
+println mysql_transactions_active

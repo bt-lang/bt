@@ -1,0 +1,10 @@
+[[permission]]
+identifier = "allow-screen-tools"
+description = "Allow the BT main window to use the screen eyedropper, marquee capture, and global shortcuts."
+commands.allow = [
+  "screen_pick_color",
+  "screen_capture_area",
+  "shortcut_register",
+  "shortcut_unregister",
+  "shortcut_unregister_all",
+]

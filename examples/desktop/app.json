@@ -1,0 +1,33 @@
+{
+  "app": {
+    "name": "Diary",
+    "title": "My Journal",
+    "version": "1.0.0",
+    "description": "BT desktop journal example",
+    "copyright": "Copyright 2026 BT",
+    "mode": "static",
+    "entry": "index.html",
+    "main": "main.bt"
+  },
+  "window": {
+    "width": 900,
+    "height": 700,
+    "resizable": true,
+    "fullscreen": false,
+    "hide_titlebar": false,
+    "always_on_top": false
+  },
+  "dev": {
+    "watch": true,
+    "delay": 500,
+    "devtools": true,
+    "console": true
+  },
+  "resources": [
+    "app.json",
+    "index.html",
+    "main.bt",
+    "assets/**"
+  ],
+  "exclude": []
+}

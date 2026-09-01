@@ -1,0 +1,21 @@
+/**
+ * net.listen web-service example.
+ *
+ * @return Starts a background web service and keeps the process alive.
+ */
+net.listen({
+    type:'web',
+    bind:'127.0.0.1:18280',
+    sites:[
+        {
+            domains:['127.0.0.1'],
+            root:'www/',
+            entry:'main.bt',
+            upload:{
+                temp:'examples/net-web/temp/'
+            }
+        }
+    ]
+})
+
+println('net web service: http://127.0.0.1:18280/')

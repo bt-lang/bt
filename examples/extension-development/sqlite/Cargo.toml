@@ -1,0 +1,17 @@
+[package]
+name = "sqlite"
+version = "1.0.0"
+authors = ["Lifeng Yan"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bt-lang/bt"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bt-extension-sdk = { path = "../../../crates/bt-extension-sdk" }
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+
+[workspace]

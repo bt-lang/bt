@@ -1,0 +1,114 @@
+{
+    "api_version": 1,
+    "functions": [
+        {
+            "name": "sqlite_open",
+            "id": 1,
+            "params": [
+                { "name": "path", "type": "string", "role": "path_write" },
+                { "name": "options", "type": "object" }
+            ],
+            "returns": "Sqlite"
+        }
+    ],
+    "objects": [
+        {
+            "name": "Sqlite",
+            "type_id": 1,
+            "methods": [
+                {
+                    "name": "transaction",
+                    "id": 5,
+                    "params": [
+                        { "name": "statements", "type": "array" }
+                    ],
+                    "returns": "int"
+                },
+                {
+                    "name": "query",
+                    "id": 6,
+                    "params": [
+                        { "name": "sql", "type": "string" }
+                    ],
+                    "returns": "SqliteQuery"
+                },
+                {
+                    "name": "close",
+                    "id": 7,
+                    "params": [],
+                    "returns": "bool",
+                    "lifecycle": "dispose"
+                }
+            ]
+        },
+        {
+            "name": "SqliteQuery",
+            "type_id": 2,
+            "methods": [
+                {
+                    "name": "bind",
+                    "id": 8,
+                    "params": [
+                        { "name": "value", "type": "any" }
+                    ],
+                    "returns": "SqliteQuery"
+                },
+                {
+                    "name": "binds",
+                    "id": 13,
+                    "params": [
+                        { "name": "rows", "type": "array" }
+                    ],
+                    "returns": "SqliteQuery"
+                },
+                {
+                    "name": "batch",
+                    "id": 14,
+                    "params": [
+                        { "name": "size", "type": "int" }
+                    ],
+                    "returns": "SqliteQuery"
+                },
+                {
+                    "name": "workers",
+                    "id": 15,
+                    "params": [
+                        { "name": "count", "type": "int" }
+                    ],
+                    "returns": "SqliteQuery"
+                },
+                {
+                    "name": "one",
+                    "id": 9,
+                    "params": [],
+                    "returns": "object"
+                },
+                {
+                    "name": "all",
+                    "id": 10,
+                    "params": [],
+                    "returns": "array"
+                },
+                {
+                    "name": "exec",
+                    "id": 11,
+                    "params": [],
+                    "returns": "object"
+                },
+                {
+                    "name": "sql",
+                    "id": 16,
+                    "params": [],
+                    "returns": "string"
+                },
+                {
+                    "name": "close",
+                    "id": 12,
+                    "params": [],
+                    "returns": "bool",
+                    "lifecycle": "dispose"
+                }
+            ]
+        }
+    ]
+}

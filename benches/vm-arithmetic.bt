@@ -1,0 +1,8 @@
+total = 0
+
+for i in 200000 {
+    total += (i % 97) * 3
+    total -= i % 11
+}
+
+assert(total > 0, 'vm arithmetic benchmark failed')

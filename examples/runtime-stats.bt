@@ -1,0 +1,4 @@
+stats = BT.stats()
+
+// Output: 256
+print stats.io.config.blocking_queue_limit

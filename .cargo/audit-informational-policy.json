@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-08-30",
+  "groups": [
+    {
+      "name": "tauri-linux-gtk3",
+      "category": "unmaintained",
+      "features": [
+        "desktop",
+        "all-features"
+      ],
+      "targets": [
+        "Linux desktop only; inactive for Windows builds"
+      ],
+      "dependency_paths": [
+        "bt -> tauri 2.11.5 -> tauri-runtime-wry 2.11.4 -> wry 0.55.1 -> gtk 0.18.2",
+        "bt -> tauri 2.11.5 -> tauri-runtime-wry 2.11.4 -> tao 0.35.3 -> gdkwayland-sys/gdkx11-sys 0.18.2",
+        "bt -> tauri 2.11.5 -> tray-icon 0.24.2 -> libappindicator 0.9.0 -> gtk 0.18.2",
+        "gtk 0.18.2 -> gtk3-macros 0.18.2 -> proc-macro-error 1.0.4"
+      ],
+      "rationale": "These are informational maintenance notices in Tauri's current Linux GTK3 backend. Cargo.lock contains the Linux branch, but Cargo's Windows target graph does not select these packages.",
+      "review_due": "2026-11-30",
+      "removal_condition": "Remove each entry as soon as Tauri migrates its Linux backend away from the corresponding GTK3 crate or otherwise removes it from the lockfile.",
+      "advisories": [
+        {
+          "id": "RUSTSEC-2024-0413",
+          "package": "atk",
+          "version": "0.18.2"
+        },
+        {
+          "id": "RUSTSEC-2024-0416",
+          "package": "atk-sys",
+          "version": "0.18.2"
+        },
+        {
+          "id": "RUSTSEC-2024-0412",
+          "package": "gdk",
+          "version": "0.18.2"
+        },
+        {
+          "id": "RUSTSEC-2024-0418",
+          "package": "gdk-sys",
+          "version": "0.18.2"
+        },
+        {
+          "id": "RUSTSEC-2024-0411",
+          "package": "gdkwayland-sys",
+          "version": "0.18.2"
+        },
+        {
+          "id": "RUSTSEC-2024-0417",
+          "package": "gdkx11",
+          "version": "0.18.2"
+        },
+        {
+          "id": "RUSTSEC-2024-0414",
+          "package": "gdkx11-sys",
+          "version": "0.18.2"
+        },
+        {
+          "id": "RUSTSEC-2024-0415",
+          "package": "gtk",
+          "version": "0.18.2"
+        },
+        {
+          "id": "RUSTSEC-2024-0420",
+          "package": "gtk-sys",
+          "version": "0.18.2"
+        },
+        {
+          "id": "RUSTSEC-2024-0419",
+          "package": "gtk3-macros",
+          "version": "0.18.2"
+        },
+        {
+          "id": "RUSTSEC-2024-0370",
+          "package": "proc-macro-error",
+          "version": "1.0.4"
+        }
+      ]
+    },
+    {
+      "name": "tauri-linux-glib-variant-iterator",
+      "category": "unsound",
+      "features": [
+        "desktop",
+        "all-features"
+      ],
+      "targets": [
+        "Linux desktop only; inactive for Windows builds"
+      ],
+      "dependency_paths": [
+        "bt -> tauri 2.11.5 -> tauri-runtime-wry 2.11.4 -> wry 0.55.1 -> webkit2gtk 2.0.2 -> glib 0.18.5",
+        "bt -> tauri 2.11.5 -> tray-icon 0.24.2 -> libappindicator 0.9.0 -> glib 0.18.5"
+      ],
+      "rationale": "The advisory affects glib::VariantStrIter iterator methods. BT does not import glib or call those methods, and the package is absent from the Windows target graph. This remains visible because it is an upstream Linux desktop risk, not a vulnerability ignore.",
+      "review_due": "2026-11-30",
+      "removal_condition": "Remove when Tauri's Linux stack uses glib 0.20 or newer, or when the affected GTK3 branch leaves Cargo.lock.",
+      "advisories": [
+        {
+          "id": "RUSTSEC-2024-0429",
+          "package": "glib",
+          "version": "0.18.5"
+        }
+      ]
+    },
+    {
+      "name": "tauri-urlpattern-unic",
+      "category": "unmaintained",
+      "features": [
+        "default build dependency",
+        "desktop",
+        "all-features"
+      ],
+      "targets": [
+        "All targets through Tauri build metadata and desktop runtime"
+      ],
+      "dependency_paths": [
+        "bt [build-dependencies] -> tauri-utils 2.9.3 -> urlpattern 0.3.0 -> unic-ucd-ident 0.9.0",
+        "bt -> tauri 2.11.5 -> tauri-utils 2.9.3 -> urlpattern 0.3.0 -> unic-ucd-ident 0.9.0"
+      ],
+      "rationale": "These are informational maintenance notices. Tauri 2.11.5 currently selects urlpattern 0.3.0, whose Unicode identifier parser selects the rust-unic 0.9 crates. BT does not depend on these crates directly.",
+      "review_due": "2026-11-30",
+      "removal_condition": "Remove each entry when Tauri or urlpattern replaces rust-unic and the corresponding package leaves Cargo.lock.",
+      "advisories": [
+        {
+          "id": "RUSTSEC-2025-0081",
+          "package": "unic-char-property",
+          "version": "0.9.0"
+        },
+        {
+          "id": "RUSTSEC-2025-0075",
+          "package": "unic-char-range",
+          "version": "0.9.0"
+        },
+        {
+          "id": "RUSTSEC-2025-0080",
+          "package": "unic-common",
+          "version": "0.9.0"
+        },
+        {
+          "id": "RUSTSEC-2025-0100",
+          "package": "unic-ucd-ident",
+          "version": "0.9.0"
+        },
+        {
+          "id": "RUSTSEC-2025-0098",
+          "package": "unic-ucd-version",
+          "version": "0.9.0"
+        }
+      ]
+    }
+  ]
+}

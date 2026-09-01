@@ -1,0 +1,42 @@
+web.header('Content-Type', 'application/json; charset=utf-8')
+
+mode = web.get.mode
+
+if mode == 'stats' {
+    print json({
+        ok: true,
+        stats: BT.stats()
+    })
+} else if mode == 'work' {
+    base = include('include-value.bt')
+    items = []
+
+    for i in 25 {
+        items.push({
+            index: i,
+            value: base + i
+        })
+    }
+
+    total = 0
+    for item in items {
+        total += item.value
+    }
+
+    missing = items.find(item -> item.index == 99)
+
+    print json({
+        ok: true,
+        total: total,
+        missing: is_empty(missing)
+    })
+} else if mode == 'reject' {
+    task(fn() {
+        1
+    }).await()
+} else {
+    print json({
+        ok: true,
+        mode: 'idle'
+    })
+}

@@ -1,0 +1,13 @@
+/**
+ * Frontend hot-reload verification function.
+ *
+ * @param data JSON object sent by the frontend.
+ * @return JSON object displayed by the page.
+ */
+fn hello(data) {
+    {
+        error: false,
+        message: 'dev reload ok',
+        data: data
+    }
+}

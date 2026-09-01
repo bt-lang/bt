@@ -1,0 +1,13 @@
+/**
+ * Remote-page bridge test function.
+ *
+ * @param data JSON object sent by the remote page.
+ * @return Remote-mode bridge test result.
+ */
+fn hello(data) {
+    {
+        error: false,
+        message: 'remote bridge ' + data.name,
+        data: data
+    }
+}

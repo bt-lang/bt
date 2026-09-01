@@ -1,0 +1,33 @@
+{
+  "app": {
+    "name": "DesktopApiDemo",
+    "title": "BT Desktop API Demo",
+    "version": "1.0.0",
+    "description": "BT desktop API v1 example",
+    "copyright": "Copyright 2026 BT",
+    "mode": "static",
+    "entry": "index.html",
+    "main": "main.bt"
+  },
+  "window": {
+    "width": 980,
+    "height": 720,
+    "resizable": true,
+    "fullscreen": false,
+    "hide_titlebar": false,
+    "always_on_top": false
+  },
+  "dev": {
+    "watch": true,
+    "delay": 500,
+    "devtools": true,
+    "console": true
+  },
+  "resources": [
+    "app.json",
+    "index.html",
+    "main.bt",
+    "assets/**"
+  ],
+  "exclude": []
+}

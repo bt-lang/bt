@@ -1,0 +1,19 @@
+items = []
+
+for i in 20000 {
+    items.push({
+        value: i,
+        group: i % 7
+    })
+}
+
+total = 0
+
+for item in items {
+    if item.group == 3 {
+        total += item.value
+    }
+}
+
+assert(items.len() == 20000, 'object array benchmark length failed')
+assert(total > 0, 'object array benchmark total failed')

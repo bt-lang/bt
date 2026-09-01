@@ -1,0 +1,33 @@
+{
+  "app": {
+    "name": "HtmlDemo",
+    "title": "BT HTML Demo",
+    "version": "1.0.0",
+    "description": "BT HTML example app",
+    "copyright": "Copyright 2026 BT",
+    "mode": "static",
+    "entry": "index.html",
+    "main": false
+  },
+  "window": {
+    "width": 820,
+    "height": 520,
+    "resizable": true,
+    "fullscreen": false,
+    "hide_titlebar": false,
+    "always_on_top": false
+  },
+  "dev": {
+    "watch": true,
+    "delay": 500,
+    "devtools": true,
+    "console": true
+  },
+  "resources": [
+    "app.json",
+    "index.html",
+    "style.css",
+    "main.js"
+  ],
+  "exclude": []
+}

@@ -1,0 +1,89 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  background: #f3f5f8;
+  color: #1f2937;
+}
+
+button {
+  min-height: 38px;
+  border: 1px solid #c7ceda;
+  border-radius: 6px;
+  padding: 0 14px;
+  background: #ffffff;
+  color: #172033;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: #2166d5;
+  color: #134aa0;
+}
+
+.shell {
+  width: min(100% - 32px, 920px);
+  margin: 32px auto;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+#runtime {
+  margin: 8px 0 0;
+  color: #667085;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.drop-zone {
+  display: grid;
+  place-items: center;
+  min-height: 120px;
+  margin: 18px 0;
+  border: 2px dashed #9aa8bc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #344054;
+}
+
+.drop-zone span {
+  margin-top: 6px;
+  color: #667085;
+}
+
+#log {
+  min-height: 220px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #101828;
+  color: #e4e7ec;
+  line-height: 1.5;
+}

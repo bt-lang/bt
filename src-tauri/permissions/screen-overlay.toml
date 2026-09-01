@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-screen-overlay"
+description = "Only allow the built-in BT screen overlay to sample, complete, or cancel the current selection session."
+commands.allow = [
+  "screen_overlay_sample",
+  "screen_overlay_pick",
+  "screen_overlay_capture",
+  "screen_overlay_cancel",
+]

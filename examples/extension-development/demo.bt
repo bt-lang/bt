@@ -1,0 +1,43 @@
+fs('@/data').create_dir()
+
+db = sqlite_open('@/data/sqlite-demo.db', {
+    wal: true,
+    busy_timeout_ms: 1000,
+    max_rows: 100,
+    max_result_bytes: 1048576
+})
+
+db.exec('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, payload BLOB, note TEXT)', [])
+db.exec('DELETE FROM users', [])
+db.exec('INSERT INTO users (name, payload, note) VALUES (?, ?, ?)', ['Alice', bytes('4254', 'hex'), null])
+db.transaction([
+    { sql: 'INSERT INTO users (name, payload, note) VALUES (?, ?, ?)', params: ['Bob', bytes('0102', 'hex'), 'writer'] },
+    { sql: 'INSERT INTO users (name, payload, note) VALUES (?, ?, ?)', params: ['Carol', bytes('0304', 'hex'), 'writer'] }
+])
+
+row = db.one('SELECT name, payload, note FROM users WHERE name = ?', ['Alice'])
+
+// Output: Alice
+print row.name
+
+// Output: true
+print is_null(row.note)
+
+missing = db.one('SELECT name FROM users WHERE name = ?', ['Missing'])
+
+// Output: true
+print is_empty(missing)
+
+rows = db.all('SELECT id, name FROM users ORDER BY id', [])
+
+// Output: 3
+print rows.len()
+
+query = db.query('SELECT name FROM users WHERE id = ?').bind(2)
+second = query.one()
+
+// Output: Bob
+print second.name
+
+query.close()
+db.close()

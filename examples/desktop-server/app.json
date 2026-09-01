@@ -1,0 +1,31 @@
+{
+  "app": {
+    "name": "ServerDemo",
+    "title": "BT Server Demo",
+    "version": "1.0.0",
+    "mode": "server",
+    "entry": "http://127.0.0.1:18280",
+    "main": "main.bt"
+  },
+  "window": {
+    "width": 900,
+    "height": 700,
+    "resizable": true,
+    "fullscreen": false,
+    "hide_titlebar": false,
+    "always_on_top": false
+  },
+  "dev": {
+    "watch": true,
+    "delay": 500,
+    "devtools": false,
+    "console": false
+  },
+  "resources": [
+    "app.json",
+    "server.bt",
+    "main.bt",
+    "www/**"
+  ],
+  "exclude": []
+}

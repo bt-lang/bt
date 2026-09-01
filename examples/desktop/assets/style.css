@@ -1,0 +1,41 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #f6f7fb;
+  color: #222;
+}
+
+main {
+  max-width: 760px;
+  margin: 80px auto;
+  padding: 32px;
+  background: white;
+  border-radius: 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
+}
+
+img {
+  width: 56px;
+  height: 56px;
+  display: block;
+  margin-bottom: 18px;
+}
+
+button {
+  margin: 0 12px 12px 0;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: #111827;
+  color: white;
+  cursor: pointer;
+}
+
+pre {
+  margin-top: 24px;
+  padding: 16px;
+  background: #111827;
+  color: #d1fae5;
+  border-radius: 12px;
+  overflow: auto;
+}

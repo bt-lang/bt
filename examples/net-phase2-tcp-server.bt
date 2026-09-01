@@ -1,0 +1,18 @@
+net.listen({
+    type:'tcp',
+    bind:'127.0.0.1:9000',
+    on_connect:fn(client){
+        println('tcp client:' + client.addr)
+    },
+    on_message:fn(client,data){
+        client.write('echo:' + data)
+    },
+    on_close:fn(client){
+        println('tcp closed:' + client.addr)
+    },
+    on_error:fn(err){
+        println(err)
+    }
+})
+
+println('tcp started')

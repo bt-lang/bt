@@ -1,0 +1,21 @@
+web.header('Content-Type', 'application/json; charset=utf-8')
+
+items = []
+for i in 20 {
+    items.push({
+        value: i,
+        label: 'item-' + string(i)
+    })
+}
+
+total = 0
+for item in items {
+    total += item.value
+}
+
+print json({
+    ok: true,
+    route: web.get.route,
+    total: total,
+    blocking_queue_limit: BT.stats().io.config.blocking_queue_limit
+})

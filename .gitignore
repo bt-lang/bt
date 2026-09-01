@@ -1,0 +1,59 @@
+# Rust and native build output
+/target/
+**/target/
+/debug/
+**/*.rs.bk
+**/*.pdb
+**/*.ilk
+**/*.exp
+**/*.lib
+**/*.dll
+**/*.so
+**/*.dylib
+**/*.exe
+**/*.bts
+**/*.btr
+
+# The root lockfile makes application builds reproducible. Nested lockfiles
+# belong to standalone examples and local extension projects.
+**/Cargo.lock
+!/Cargo.lock
+!/examples/extension-development/sqlite/Cargo.lock
+
+# JavaScript and frontend output
+**/node_modules/
+**/dist/
+**/coverage/
+**/.cache/
+**/*.tsbuildinfo
+
+# Generated packages, logs and temporary files
+**/*.zip
+**/*.tar
+**/*.tar.gz
+**/*.log
+**/*.tmp
+**/*.temp
+**/tmp/
+**/temp/
+
+# Local editor and operating-system state
+/.vscode/
+/.idea/
+/.vs/
+/.DS_Store
+**/.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx

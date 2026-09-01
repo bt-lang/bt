@@ -1,0 +1,26 @@
+{
+  "app": {
+    "name": "IconAppJsonDemo",
+    "title": "BT app.json Icon Acceptance",
+    "version": "1.0.0",
+    "description": "BT app.json icon acceptance app",
+    "copyright": "Copyright 2026 BT",
+    "mode": "static",
+    "entry": "index.html",
+    "icon": "icon/my.ico"
+  },
+  "window": {
+    "width": 760,
+    "height": 460
+  },
+  "dev": {
+    "watch": true,
+    "delay": 500,
+    "devtools": false,
+    "console": false
+  },
+  "resources": [
+    "index.html"
+  ],
+  "exclude": []
+}

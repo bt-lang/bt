@@ -1,0 +1,14 @@
+total = 0
+text = '  BT Language  '
+
+for i in 30000 {
+    normalized = text.trim().to_lowercase().replace('language', 'lang')
+    encoded = base64(normalized).encode()
+    joined = path('root').join('docs', string(i % 11))
+    total += normalized.len()
+    total += encoded.len()
+    total += joined.len()
+    total += Math.abs(0 - (i % 17))
+}
+
+assert(total > 0, 'stdlib dispatch benchmark failed')

@@ -1,0 +1,3 @@
+bench_value = 40
+
+bench_value + 2

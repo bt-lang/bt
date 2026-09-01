@@ -1,0 +1,16 @@
+net.listen({
+    type:'web',
+    bind:'127.0.0.1:18282',
+    sites:[
+        {
+            domains:['127.0.0.1'],
+            root:'www/',
+            entry:'main.bt',
+            upload:{
+                temp:'temp/'
+            }
+        }
+    ]
+})
+
+println('longrun audit: http://127.0.0.1:18282/')

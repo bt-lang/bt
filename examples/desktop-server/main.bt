@@ -1,0 +1,13 @@
+/**
+ * Frontend bridge test function.
+ *
+ * @param data JSON object sent by the frontend.
+ * @return Desktop bridge test result.
+ */
+fn hello(data) {
+    {
+        error: false,
+        message: 'server bridge ' + data.name,
+        data: data
+    }
+}

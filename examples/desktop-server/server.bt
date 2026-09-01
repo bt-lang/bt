@@ -1,0 +1,19 @@
+net.listen({
+    type:'web',
+    bind:'127.0.0.1:18280',
+    sites:[
+        {
+            domains:['127.0.0.1'],
+            root:'www/',
+            entry:'main.bt',
+            static:{
+                route:'/static/{**}',
+                path:'www/static/',
+                default:'index.html'
+            },
+            upload:{
+                temp:'temp/'
+            }
+        }
+    ]
+})

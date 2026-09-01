@@ -1,0 +1,22 @@
+# RustSec policy for release and continuous-integration audits.
+#
+# Vulnerability advisories must be fixed by upgrading, removing, or isolating the affected
+# dependency. Any future exception must be advisory-specific and document its dependency path,
+# active features and targets, reachability evidence, review date, and removal condition here.
+[advisories]
+ignore = []
+informational_warnings = ["unmaintained", "unsound", "notice"]
+severity_threshold = "none"
+
+# Keep informational findings visible with inverse dependency trees. They are tracked separately
+# from vulnerabilities because cargo-audit reports target-specific packages from the unified lock
+# file even when they are not compiled for the release target.
+[output]
+deny = []
+format = "terminal"
+quiet = false
+show_tree = true
+
+[yanked]
+enabled = true
+update_index = true

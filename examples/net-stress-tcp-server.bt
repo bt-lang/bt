@@ -1,0 +1,21 @@
+count = 0
+
+server = net.listen({
+    type:'tcp',
+    bind:'127.0.0.1:9100',
+    on_message:fn(client,data){
+        count++
+        if data == 'stop' {
+            println('tcp_messages:' + count)
+            client.close()
+            server.close()
+            return true
+        }
+        client.write('echo:' + data)
+    },
+    on_error:fn(err){
+        println(err)
+    }
+})
+
+println('tcp stress server: ' + server.addr)

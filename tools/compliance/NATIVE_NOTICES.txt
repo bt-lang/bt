@@ -1,0 +1,20 @@
+Bundled libffi runtime
+======================
+
+BT's `ffi` feature uses libffi {{LIBFFI_VERSION}} through libffi-sys
+{{LIBFFI_SYS_VERSION}}. On Windows MSVC, libffi-sys builds the bundled libffi
+runtime into the BT binary. The build-only and test-only helpers described by
+libffi's LICENSE-BUILDTOOLS are not part of BT release archives or runtime
+binaries.
+
+{{LIBFFI_LICENSE_TEXT}}
+
+MPL-2.0 components
+==================
+
+Some desktop, serial-port, CSS parsing, and selector dependencies are
+available under MPL-2.0. Their exact versions, source repositories, and full
+MPL-2.0 text appear in the generated Cargo section. The corresponding source
+is available from the linked upstream repositories and crates.io package
+archives identified by name and version. BT does not modify or vendor those
+crate source files in its release archives.

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "BT App",
+  "version": "0.1.0",
+  "identifier": "org.btlang.app",
+  "build": {
+    "frontendDist": "empty-dist"
+  },
+  "app": {
+    "windows": [],
+    "macOSPrivateApi": true,
+    "withGlobalTauri": false,
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png",
+      "icons/app.ico"
+    ]
+  }
+}

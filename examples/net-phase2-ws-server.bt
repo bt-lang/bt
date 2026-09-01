@@ -1,0 +1,19 @@
+net.listen({
+    type:'ws',
+    bind:'127.0.0.1:8081',
+    route:'/ws',
+    on_connect:fn(socket){
+        socket.send('welcome')
+    },
+    on_message:fn(socket,data){
+        socket.send('echo:' + data)
+    },
+    on_close:fn(socket){
+        println('ws closed:' + socket.addr)
+    },
+    on_error:fn(err){
+        println(err)
+    }
+})
+
+println('ws started')

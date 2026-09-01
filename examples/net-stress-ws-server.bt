@@ -1,0 +1,20 @@
+count = 0
+
+server = net.listen({
+    type:'ws',
+    bind:'127.0.0.1:9102',
+    route:'/ws',
+    on_message:fn(socket,data){
+        count++
+        socket.send('echo:' + data)
+    },
+    on_close:fn(socket){
+        println('ws_messages:' + count)
+        server.close()
+    },
+    on_error:fn(err){
+        println(err)
+    }
+})
+
+println('ws stress server: ' + server.addr)

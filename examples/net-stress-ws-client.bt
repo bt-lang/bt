@@ -1,0 +1,26 @@
+message_count = 1000
+payload = 'w'.repeat(256)
+ok = 0
+
+ws = net.connect({
+    type:'ws',
+    url:'ws://127.0.0.1:9102/ws'
+})
+
+ws.on_message(fn(data){
+    if data.starts_with('echo:') {
+        ok++
+    }
+    if ok >= message_count {
+        println('ws_ok:' + ok + '/' + message_count)
+        ws.close()
+    }
+})
+
+ws.on_error(fn(err){
+    println(err)
+})
+
+for i in message_count {
+    ws.send(payload + ':' + i)
+}

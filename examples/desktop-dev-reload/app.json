@@ -1,0 +1,33 @@
+{
+  "app": {
+    "name": "DevReloadDemo",
+    "title": "BT Dev Reload Demo",
+    "version": "1.0.0",
+    "mode": "static",
+    "entry": "index.html",
+    "main": "main.bt"
+  },
+  "window": {
+    "width": 900,
+    "height": 640,
+    "resizable": true,
+    "fullscreen": false,
+    "hide_titlebar": false,
+    "always_on_top": false
+  },
+  "dev": {
+    "watch": true,
+    "delay": 500,
+    "devtools": true,
+    "console": true
+  },
+  "resources": [
+    "app.json",
+    "index.html",
+    "main.bt",
+    "assets/**"
+  ],
+  "exclude": [
+    "assets/ignored/**"
+  ]
+}

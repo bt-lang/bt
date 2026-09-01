@@ -1,0 +1,19 @@
+if BT.OS == 'windows' {
+    cmd = process('cmd').args(['/C', 'echo BT_PIPE&&echo BT_ERR 1>&2']).child()
+} else {
+    cmd = process('sh').args(['-c', 'printf BT_PIPE; printf BT_ERR >&2']).child()
+}
+
+cmd.wait()
+out = cmd.stdout_read().trim()
+err = cmd.stderr_read().trim()
+info = cmd.stdout()
+
+// Output: BT_PIPE
+println out
+
+// Output: BT_ERR
+println err
+
+// Output: stdout
+print info.kind

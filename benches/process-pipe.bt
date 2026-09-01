@@ -1,0 +1,10 @@
+if BT.OS == 'windows' {
+    cmd = process('cmd').args(['/C', 'for /L %i in (1,1,200) do @echo line%i']).child()
+} else {
+    cmd = process('sh').args(['-c', 'i=1; while [ $i -le 200 ]; do echo line$i; i=$((i+1)); done']).child()
+}
+
+cmd.wait()
+lines = cmd.stdout_read_lines()
+
+assert(lines.len() == 200, 'process pipe benchmark failed')

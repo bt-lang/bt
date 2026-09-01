@@ -1,0 +1,10 @@
+client = net.connect({
+    type:'tcp',
+    host:'127.0.0.1',
+    port:9000,
+    timeout:3000
+})
+
+client.write('hello')
+println(client.read())
+client.close()

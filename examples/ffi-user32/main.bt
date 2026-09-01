@@ -1,0 +1,22 @@
+implicit_user32 = ffi.load('user32.dll')
+screen_width = implicit_user32.GetSystemMetrics(0)
+
+// Output: current screen width, greater than 0
+print screen_width
+
+ffi.close(implicit_user32)
+
+declared_user32 = ffi.load('user32.dll', {
+    MessageBoxW: 'i32(ptr, wstr, wstr, u32)'
+})
+button = declared_user32.MessageBoxW(
+    null,
+    'This window was created by BT through an FFI call to user32.dll',
+    'BT FFI Test',
+    64
+)
+
+// Output after clicking OK: 1
+print button
+
+ffi.close(declared_user32)

@@ -1,0 +1,11 @@
+stats = BT.stats().permission
+allowed = stats.config.allowed.join(',')
+denied = stats.config.deny.join(',')
+
+assert(stats.config.allow_configured, 'permission allow list should be configured')
+assert(allowed == 'fs,env', 'permission allowed list changed: ' + allowed)
+assert(denied == 'process', 'permission deny list changed: ' + denied)
+assert(stats.denied == 0, 'permission denied counter should start at zero')
+
+// Output: permission-stats:fs,env|process|0
+print 'permission-stats:' + allowed + '|' + denied + '|' + string(stats.denied)

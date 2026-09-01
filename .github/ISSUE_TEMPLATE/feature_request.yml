@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a focused improvement to BT.
+title: "[Feature]: "
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the user need or limitation this proposal addresses.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the API, syntax, configuration, or visible behavior you would like.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe existing workarounds or other designs you considered.
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and performance
+      description: Note possible compatibility, runtime cost, memory, concurrency, or migration impact.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add examples, prior art, or links that clarify the proposal.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checklist
+      options:
+        - label: I searched existing issues and documentation for this request.
+          required: true
+        - label: I have described the user-visible outcome rather than only an implementation detail.
+          required: true

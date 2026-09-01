@@ -1,0 +1,40 @@
+arr = [1 2 3]
+(a, b c d) = arr
+
+obj = {
+    name: 'BT',
+    age: 1
+}
+(name age missing) = obj
+
+assert(a == 1 && b == 2 && c == 3 && is_empty(d), 'array destructuring changed')
+assert(name == 'BT' && age == 1 && is_empty(missing), 'object destructuring changed')
+
+users = [
+    {name: 'A', age: 10}
+    {name: 'B', age: 20}
+]
+
+picked = []
+for (name age extra) in users {
+    picked.push(name + ':' + string(age) + ':' + string(is_empty(extra)))
+}
+
+i = 0
+while i < 3 {
+    picked.push('w' + string(i))
+    i += 1
+}
+
+loop_count = 0
+loop {
+    loop_count += 1
+    if loop_count == 2 {
+        break
+    }
+}
+
+assert(picked.join('|') == 'A:10:true|B:20:true|w0|w1|w2', 'loop or for destructuring changed')
+assert(loop_count == 2, 'loop break changed')
+
+print 'compat-destructure-loop:ok'

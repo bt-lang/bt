@@ -1,0 +1,74 @@
+library_path = if BT.OS == 'windows' {
+    '../../target/debug/bt_ffi_testlib.dll'
+} elseif BT.OS == 'linux' {
+    '../../target/debug/libbt_ffi_testlib.so'
+} else {
+    '../../target/debug/libbt_ffi_testlib.dylib'
+}
+
+testlib = ffi.load(library_path, {
+    bt_ffi_add_i32: 'i32(i32, i32)',
+    bt_ffi_add_u32: 'u32(u32, u32)',
+    bt_ffi_i8: 'i8()',
+    bt_ffi_i16: 'i16()',
+    bt_ffi_u8: 'u8()',
+    bt_ffi_u16: 'u16()',
+    bt_ffi_add_i64: 'i64(i64, i64)',
+    bt_ffi_add_u64: 'u64(u64, u64)',
+    bt_ffi_add_isize: 'isize(isize, isize)',
+    bt_ffi_add_usize: 'usize(usize, usize)',
+    bt_ffi_add_f32: 'f32(f32, f32)',
+    bt_ffi_add_f64: 'f64(f64, f64)',
+    bt_ffi_is_null: 'i32(ptr)',
+    bt_ffi_static_pointer: 'ptr()',
+    bt_ffi_echo_pointer: 'ptr(ptr)',
+    bt_ffi_static_cstr: 'cstr()',
+    bt_ffi_write_bt: 'i32(ptr)',
+    bt_ffi_is_bt_text: 'i32(cstr)',
+    bt_ffi_noop: 'void()'
+})
+
+sum = testlib.bt_ffi_add_i32(-2, 5)
+cached_total = 0
+for _ in 10000 {
+    cached_total += testlib.bt_ffi_add_i32(1, 2)
+}
+unsigned_sum = testlib.bt_ffi_add_u32(2, 5)
+narrow_ok = testlib.bt_ffi_i8() == -7 && testlib.bt_ffi_i16() == -300 && testlib.bt_ffi_u8() == 250 && testlib.bt_ffi_u16() == 60000
+wide_ok = testlib.bt_ffi_add_i64(-2, 5) == 3 && testlib.bt_ffi_add_u64(2, 5) == 7 && testlib.bt_ffi_add_isize(-2, 5) == 3 && testlib.bt_ffi_add_usize(2, 5) == 7
+float_ok = testlib.bt_ffi_add_f32(1, 2.5) == 3.5 && testlib.bt_ffi_add_f64(1, 2.5) == 3.5
+null_ok = testlib.bt_ffi_is_null(null)
+pointer = testlib.bt_ffi_static_pointer()
+pointer_ok = testlib.bt_ffi_is_null(pointer)
+text_ok = testlib.bt_ffi_is_bt_text('BT')
+void_result = testlib.bt_ffi_noop()
+returned_text = testlib.bt_ffi_static_cstr()
+buffer = ffi.buffer(16)
+written = testlib.bt_ffi_write_bt(buffer)
+buffer_text = buffer.to_string()
+buffer_copy = buffer.to_bytes(0, written)
+buffer_pointer = testlib.bt_ffi_echo_pointer(buffer)
+ffi.close(buffer)
+closed = ffi.close(testlib)
+
+assert(sum == 3)
+assert(cached_total == 30000)
+assert(unsigned_sum == 7)
+assert(narrow_ok)
+assert(wide_ok)
+assert(float_ok)
+assert(null_ok == 1)
+assert(pointer_ok == 0)
+assert(text_ok == 1)
+assert(type(void_result) == 'Empty')
+assert(returned_text == 'BT')
+assert(written == 3)
+assert(buffer_text == 'BT')
+assert(buffer_copy.to_hex() == '425400')
+assert(type(buffer_pointer) == 'FfiPointer')
+assert(closed)
+
+// Output: FFI test library verification passed
+print 'FFI test library verification passed'
+
+pause()

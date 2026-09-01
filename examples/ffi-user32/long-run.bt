@@ -1,0 +1,18 @@
+baseline = BT.stats().ffi
+user32 = ffi.load('user32.dll')
+
+total = 0
+for _ in 1000000 {
+    total += user32.GetSystemMetrics(0)
+}
+
+ffi.close(user32)
+after = BT.stats().ffi
+
+assert(total > 0)
+assert(after.open_libraries == baseline.open_libraries)
+assert(after.buffers == baseline.buffers)
+assert(after.buffer_bytes == baseline.buffer_bytes)
+
+// Output: FFI declaration-free long-run verification passed
+print 'FFI declaration-free long-run verification passed'

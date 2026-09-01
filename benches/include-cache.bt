@@ -1,0 +1,7 @@
+total = 0
+
+for i in 3000 {
+    total += include('include-cache-fixture.bt')
+}
+
+assert(total == 126000, 'include cache benchmark failed')

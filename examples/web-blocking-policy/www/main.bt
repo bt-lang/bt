@@ -1,0 +1,14 @@
+web.header('Content-Type', 'text/plain; charset=utf-8')
+
+mode = web.get.mode
+
+if mode == 'sleep' {
+    sleep(5)
+    print 'allowed sleep'
+} else if mode == 'reject' {
+    task(fn() {
+        return 1
+    }).await()
+} else {
+    print 'allowed request'
+}

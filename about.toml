@@ -1,0 +1,39 @@
+accepted = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+max-depth = 5
+workarounds = [
+    "bitvec",
+    "chrono",
+    "clap",
+    "cocoa",
+    "gtk",
+    "linux-raw-sys",
+    "prost",
+    "ring",
+    "rustix",
+    "rustls",
+    "sentry",
+    "tonic",
+    "tract",
+    "unicode-ident",
+    "wasmtime",
+]
+
+[private]
+ignore = true

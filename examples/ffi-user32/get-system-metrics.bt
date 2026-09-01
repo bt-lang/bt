@@ -1,0 +1,8 @@
+user32 = ffi.load('user32.dll')
+
+screen_width = user32.GetSystemMetrics(0)
+
+// Output: current screen width, greater than 0
+print screen_width
+
+ffi.close(user32)

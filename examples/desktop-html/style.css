@@ -1,0 +1,54 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  color: #20242c;
+  background: #f6f7f9;
+}
+
+main {
+  width: min(100% - 32px, 760px);
+  margin: 56px auto;
+  display: grid;
+  gap: 18px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.25;
+}
+
+p {
+  margin: 0;
+  line-height: 1.8;
+}
+
+button {
+  width: max-content;
+  height: 38px;
+  border: 1px solid #1f6feb;
+  border-radius: 6px;
+  padding: 0 16px;
+  background: #1f6feb;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+output {
+  min-height: 42px;
+  padding: 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+}

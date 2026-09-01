@@ -1,0 +1,8 @@
+udp = net.connect({
+    type:'udp',
+    host:'127.0.0.1',
+    port:9001
+})
+
+udp.send('hello')
+udp.close()

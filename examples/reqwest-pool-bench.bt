@@ -1,0 +1,17 @@
+url = 'http://127.0.0.1:18381/'
+
+for i in 100 {
+    response = reqwest(url).send()
+    assert(response.status == 200, 'HTTP bench request failed')
+}
+
+stats = BT.stats()
+
+// Example output: 1
+println stats.http.created
+
+// Example output: 99
+println stats.http.hits
+
+// Example output: 1
+println stats.http.entries
