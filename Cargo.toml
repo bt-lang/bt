@@ -117,4 +117,4 @@ notify-rust = { version = "4.17.0", optional = true }
 xcap = { version = "=0.9.8", default-features = false, optional = true }
 
 [dev-dependencies]
-wat = { version = "=1.251.0", default-features = false }
+wat = { version = "=1.258.0", default-features = false }
