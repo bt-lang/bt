@@ -60,7 +60,7 @@ powershell -ExecutionPolicy Bypass -File tools/quality/release-check.ps1 -SkipDe
 
 ## 发布产物
 
-手动触发的 GitHub 流水线会先生成许可证清单，再产生四个经过校验的 ZIP：
+GitHub 流水线会先生成许可证清单，再产生四个经过校验的 ZIP：
 
 - `bt-windows-x64.zip`：`bt.exe` 和 `bt_app.exe`。
 - `bt-linux-x64.zip`：静态链接 musl 的 `bt` 和 GNU `bt_app`。
@@ -68,8 +68,10 @@ powershell -ExecutionPolicy Bypass -File tools/quality/release-check.ps1 -SkipDe
 - `bt-macos-x64.zip`：Intel `bt` 和 `bt_app`。
 
 实际文件名会在 `.zip` 前包含 Cargo 包版本。每个归档中的清单只覆盖该归档
-两个程序实际采用的 target 和 feature 依赖图。流水线只保留
-`workflow_dispatch` 手动入口，推送仓库不会消耗构建额度。
+两个程序实际采用的 target 和 feature 依赖图。手动通过 `workflow_dispatch`
+运行时，归档会作为流水线产物保留 30 天。推送与 Cargo 包版本完全一致、以
+`v` 开头的标签（例如 `v1.1.3`）时，也会构建这些归档并发布到 GitHub
+Release。普通分支推送不会触发该流水线。
 
 ## 长稳验证
 

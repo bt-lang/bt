@@ -2,6 +2,9 @@ name: Build BT Cross-Platform
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -22,6 +25,21 @@ jobs:
 
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate release tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $packages = @($metadata.packages | Where-Object { $_.name -eq 'bt' })
+          if ($packages.Count -ne 1) {
+            throw "Expected exactly one bt package, found $($packages.Count)"
+          }
+
+          $expectedTag = "v$($packages[0].version)"
+          if ($env:GITHUB_REF_NAME -ne $expectedTag) {
+            throw "Release tag $env:GITHUB_REF_NAME does not match Cargo package version $expectedTag"
+          }
 
       - name: Cache cargo-about
         id: cargo-about-cache
@@ -303,3 +321,31 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release archives
+        uses: actions/download-artifact@v8
+        with:
+          pattern: "bt-*.zip"
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create release and upload archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release-assets/*.zip \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

@@ -64,8 +64,8 @@ powershell -ExecutionPolicy Bypass -File tools/quality/release-check.ps1 -SkipDe
 
 ## Release artifacts
 
-The manually dispatched GitHub workflow generates notices before building and
-publishes four verified ZIP archives:
+The GitHub workflow generates notices before building and produces four
+verified ZIP archives:
 
 - `bt-windows-x64.zip`: `bt.exe` and `bt_app.exe`.
 - `bt-linux-x64.zip`: statically linked musl `bt` and GNU `bt_app`.
@@ -74,8 +74,11 @@ publishes four verified ZIP archives:
 
 Archive names include the Cargo package version before `.zip`. Each archive
 contains the notice generated from exactly the target and feature graphs used
-by its two programs. The workflow has only a `workflow_dispatch` trigger so
-repository pushes do not consume build minutes.
+by its two programs. A manual `workflow_dispatch` run keeps the archives as
+workflow artifacts for 30 days. Pushing a `v`-prefixed tag that exactly matches
+the Cargo package version, such as `v1.1.3`, also builds the archives and
+publishes them in a GitHub Release. Ordinary branch pushes do not trigger the
+workflow.
 
 ## Long-running validation
 
