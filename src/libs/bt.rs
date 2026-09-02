@@ -181,7 +181,7 @@ fn threads() -> i64 {
 /// Returns the logical name of the current binary.
 fn runtime_name() -> &'static str {
     if cfg!(feature = "desktop") {
-        "bt_app"
+        "bt-app"
     } else {
         "bt"
     }

@@ -33,7 +33,7 @@ body:
       placeholder: |
         BT version or commit:
         Operating system and architecture:
-        Target (bt, bt_app, web, extension):
+        Target (bt, bt-app, web, extension):
         Enabled features:
     validations:
       required: true

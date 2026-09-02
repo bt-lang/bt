@@ -58,7 +58,7 @@ pub struct AppRuntime {
     pub project_dir: PathBuf,
     /// Current app source, which defines lifecycle boundaries for file associations, hot reload, and internal startup.
     pub source: AppSource,
-    /// App arguments with the bt_app command and BTR path removed.
+    /// App arguments with the bt-app command and BTR path removed.
     pub app_args: Vec<String>,
     /// Parsed and validated app.json configuration.
     pub config: AppJson,

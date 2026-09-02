@@ -58,7 +58,7 @@ fn show_system_notification(app: &AppHandle, title: String, body: String) -> Res
 /// Shows a system notification using portable Windows toast mode.
 ///
 /// Outside Cargo output directories, `tauri-plugin-notification` uses the application identifier
-/// as its `AppUserModelID`. Because bt_app ships as a portable single-file executable without an
+/// as its `AppUserModelID`. Because bt-app ships as a portable single-file executable without an
 /// installer-created Start menu shortcut, Windows may accept the call without displaying a toast.
 /// Use notify-rust's portable fallback AppID and return underlying errors synchronously so the
 /// frontend cannot report success when the system provided no feedback.

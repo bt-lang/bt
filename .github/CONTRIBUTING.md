@@ -1,13 +1,13 @@
 # Contributing to BT
 
-Thank you for helping improve BT. Keep changes focused, preserve the distinction between the lightweight `bt` CLI and the optional `bt_app` desktop runtime, and avoid adding work to unrelated VM hot paths.
+Thank you for helping improve BT. Keep changes focused, preserve the distinction between the lightweight `bt` CLI and the optional `bt-app` desktop runtime, and avoid adding work to unrelated VM hot paths.
 
 ## Development setup
 
 1. Install the stable Rust toolchain.
 2. Clone the repository, including the tracked root `Cargo.lock`.
 3. On Windows, install the MSVC build tools and Windows SDK.
-4. Install the platform dependencies required by Tauri 2 before building `bt_app`.
+4. Install the platform dependencies required by Tauri 2 before building `bt-app`.
 
 ## Build and test
 
@@ -17,7 +17,7 @@ Run the checks that match the affected area:
 cargo fmt --all -- --check
 cargo test --locked
 cargo build --locked --bin bt
-cargo build --locked --features desktop --bin bt_app
+cargo build --locked --features desktop --bin bt-app
 ```
 
 For language or standard-library changes, also run the relevant scripts under `tools/quality/`. For desktop behavior, test a runnable project under `examples/` and verify the actual interaction path, not only source-level unit tests.

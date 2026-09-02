@@ -256,7 +256,7 @@ mod tests {
         assert!(contains_wide_text(&resource, "Copyright 2026"));
     }
 
-    /// The default description should fall back to the window title so user apps do not keep the bt_app engine description.
+    /// The default description should fall back to the window title so user apps do not keep the bt-app engine description.
     #[test]
     fn version_resource_description_falls_back_to_title() {
         let mut config = AppJson::default();

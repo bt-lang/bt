@@ -500,11 +500,11 @@ Assert-DistributionInventory
 if ($ReleaseProfile) {
     $profiles = @{
         "windows-x64" = @{
-            Programs = "bt.exe and bt_app.exe"
+            Programs = "bt.exe and bt-app.exe"
             IncludeBundledLibffi = $true
             Graphs = @(
                 @{
-                    Programs = "bt.exe and bt_app.exe"
+                    Programs = "bt.exe and bt-app.exe"
                     Target = "x86_64-pc-windows-msvc"
                     Features = @("desktop")
                     NoDefaultFeatures = $false
@@ -513,7 +513,7 @@ if ($ReleaseProfile) {
             )
         }
         "linux-x64" = @{
-            Programs = "bt and bt_app"
+            Programs = "bt and bt-app"
             IncludeBundledLibffi = $false
             Graphs = @(
                 @{
@@ -524,7 +524,7 @@ if ($ReleaseProfile) {
                     FeatureDescription = "extensions; default features disabled"
                 },
                 @{
-                    Programs = "bt_app"
+                    Programs = "bt-app"
                     Target = "x86_64-unknown-linux-gnu"
                     Features = @("desktop")
                     NoDefaultFeatures = $false
@@ -533,11 +533,11 @@ if ($ReleaseProfile) {
             )
         }
         "macos-arm64" = @{
-            Programs = "bt and bt_app"
+            Programs = "bt and bt-app"
             IncludeBundledLibffi = $false
             Graphs = @(
                 @{
-                    Programs = "bt and bt_app"
+                    Programs = "bt and bt-app"
                     Target = "aarch64-apple-darwin"
                     Features = @("desktop")
                     NoDefaultFeatures = $false
@@ -546,11 +546,11 @@ if ($ReleaseProfile) {
             )
         }
         "macos-x64" = @{
-            Programs = "bt and bt_app"
+            Programs = "bt and bt-app"
             IncludeBundledLibffi = $false
             Graphs = @(
                 @{
-                    Programs = "bt and bt_app"
+                    Programs = "bt and bt-app"
                     Target = "x86_64-apple-darwin"
                     Features = @("desktop")
                     NoDefaultFeatures = $false

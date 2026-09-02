@@ -7,7 +7,7 @@ fn main() {
     // Apply this only to the final binary to avoid affecting dependency build-script linker arguments.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         println!("cargo:rustc-link-arg-bin=bt=/STACK:268435456");
-        println!("cargo:rustc-link-arg-bin=bt_app=/STACK:268435456");
+        println!("cargo:rustc-link-arg-bin=bt-app=/STACK:268435456");
     }
     // Other platforms are unaffected (Linux/macOS skip this logic).
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
@@ -17,7 +17,7 @@ fn main() {
     }
 }
 
-/// Compile Windows resources for `bt.exe` and `bt_app.exe` and link them to their respective binaries.
+/// Compile Windows resources for `bt.exe` and `bt-app.exe` and link them to their respective binaries.
 ///
 /// Cargo runs the package-level `build.rs` once rather than once per `[[bin]]`, so global
 /// `winresource::compile()` is insufficient. Generate two resource files and attach each
@@ -40,8 +40,8 @@ fn compile_windows_resources() -> std::io::Result<()> {
             false,
         ),
         (
-            "bt_app",
-            "bt_app.exe",
+            "bt-app",
+            "bt-app.exe",
             "BT desktop application engine",
             "src-tauri/icons/app.ico",
             true,

@@ -10393,7 +10393,7 @@ for i in 0..10 step -2 {
                 has_envs('BT'),
                 has_envs('bt'),
                 BT.VERSION,
-                BT.NAME == 'bt' || BT.NAME == 'bt_app',
+                BT.NAME == 'bt' || BT.NAME == 'bt-app',
                 BT.OS == system.os,
                 BT.ARCH == system.arch,
                 BT.THREADS == system.threads,

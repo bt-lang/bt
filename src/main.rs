@@ -1,6 +1,6 @@
 //! Unified BT executable entry point.
 //!
-//! Both `bt.exe` and `bt_app.exe` are built from this entry point. At startup, it first checks for an embedded desktop Bundle,
+//! Both `bt.exe` and `bt-app.exe` are built from this entry point. At startup, it first checks for an embedded desktop Bundle,
 //! then falls back to the executable name so a packaged `dist/AppName.exe` still starts in App mode.
 
 mod app;
@@ -43,7 +43,8 @@ fn main() {
         .unwrap_or_default()
         .to_lowercase();
 
-    if has_bundle || exe_name.contains("bt_app") {
+    // Keep recognizing the former underscore spelling so existing copied runtimes continue to start in App mode.
+    if has_bundle || exe_name.contains("bt-app") || exe_name.contains("bt_app") {
         bt_app::main();
     } else {
         bt_cli::main();

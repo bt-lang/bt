@@ -1,12 +1,12 @@
 //! Windows desktop file-association registration.
 //!
 //! Only packaged Bundle apps write to the current user's registry; development-directory runs do not register the generic
-//! `bt_app.exe` as a business app. The registration scope is fixed to `HKCU\\Software\\Classes`, so administrator privileges are not required.
+//! `bt-app.exe` as a business app. The registration scope is fixed to `HKCU\\Software\\Classes`, so administrator privileges are not required.
 
 use crate::app::config::AppJson;
 use crate::error::BtError;
 
-/// Register the current generic bt_app runtime as the open handler for `.btr` files.
+/// Register the current generic bt-app runtime as the open handler for `.btr` files.
 ///
 /// This only writes to the current user's registry and does not modify the Windows-protected `UserChoice`. If the user has already
 /// chosen another default app for `.btr`, the system may still ask for one confirmation in "Open with".
@@ -44,7 +44,7 @@ pub fn register_btr_runtime() -> Result<(), BtError> {
 #[cfg(not(windows))]
 pub fn register_btr_runtime() -> Result<(), BtError> {
     Err(BtError::Config(
-        "bt_app associate currently only supports Windows".to_string(),
+        "bt-app associate currently only supports Windows".to_string(),
     ))
 }
 

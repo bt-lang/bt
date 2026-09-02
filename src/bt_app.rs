@@ -34,7 +34,7 @@ fn run() -> Result<(), BtError> {
         .map(crate::bundle::footer::has_bundle_injected)
         .unwrap_or(false);
     if is_bundled_app {
-        // Remaining arguments come from file associations or the user and are not bt_app commands.
+        // Remaining arguments come from file associations or the user and are not bt-app commands.
         return crate::app::runtime::start_app(None, args.into_iter().skip(1).collect());
     }
     match args.get(1).map(|s| s.as_str()) {
@@ -48,12 +48,12 @@ fn run() -> Result<(), BtError> {
         Some("info") => {
             let path = args
                 .get(2)
-                .ok_or_else(|| BtError::Config("Usage: bt_app.exe info <app.btr>".to_string()))?;
+                .ok_or_else(|| BtError::Config("Usage: bt-app.exe info <app.btr>".to_string()))?;
             crate::app::build::info_btr(PathBuf::from(path).as_path())
         }
         Some("associate") => {
             crate::app::file_association::register_btr_runtime()?;
-            println!("Registered the current bt_app as the program for opening .btr applications");
+            println!("Registered the current bt-app as the program for opening .btr applications");
             Ok(())
         }
         Some("build") => crate::app::build::build_project(),
@@ -67,7 +67,7 @@ fn run() -> Result<(), BtError> {
             crate::app::runtime::start_app(Some(PathBuf::from(path)), app_args)
         }
         Some(cmd) => Err(BtError::Config(format!(
-            "Unknown command: {}\nUsage: bt_app.exe [run|pack|info|associate|build|bundle-check|export]",
+            "Unknown command: {}\nUsage: bt-app.exe [run|pack|info|associate|build|bundle-check|export]",
             cmd
         ))),
     }
@@ -86,10 +86,10 @@ fn trailing_app_args(args: &[String], start: usize) -> Vec<String> {
 mod tests {
     use super::*;
 
-    /// Application arguments omit the optional separator so BTR scripts never see bt_app syntax.
+    /// Application arguments omit the optional separator so BTR scripts never see bt-app syntax.
     #[test]
     fn trailing_arguments_skip_optional_separator() {
-        let args = ["bt_app", "demo.btr", "--", "open.txt"]
+        let args = ["bt-app", "demo.btr", "--", "open.txt"]
             .into_iter()
             .map(str::to_string)
             .collect::<Vec<_>>();

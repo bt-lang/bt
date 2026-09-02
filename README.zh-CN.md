@@ -58,7 +58,7 @@ cargo run --release --bin bt -- -c examples/compat/empty-null.bt
 运行基础桌面示例：
 
 ```text
-cargo run --release --features desktop --bin bt_app -- run examples/desktop
+cargo run --release --features desktop --bin bt-app -- run examples/desktop
 ```
 
 ## 编译与测试
@@ -66,7 +66,7 @@ cargo run --release --features desktop --bin bt_app -- run examples/desktop
 | 目标 | 命令 |
 |---|---|
 | CLI 运行时 | `cargo build --release --bin bt` |
-| 桌面运行时 | `cargo build --release --features desktop --bin bt_app` |
+| 桌面运行时 | `cargo build --release --features desktop --bin bt-app` |
 | 默认测试 | `cargo test` |
 | 桌面功能测试 | `cargo test --features desktop` |
 
@@ -75,7 +75,7 @@ Windows 桌面构建需要 MSVC 工具链、Windows SDK 和 WebView2 Runtime。C
 在包含 `app.json` 的桌面项目目录中，可使用已编译的运行时生成独立可执行文件：
 
 ```text
-path/to/bt_app build
+path/to/bt-app build
 ```
 
 ## 示例
@@ -150,7 +150,7 @@ path/to/bt_app build
 | `src/` | 词法、语法、编译器、字节码 VM、标准库、Web、桌面和 Bundle 核心源码。 |
 | `src-tauri/` | Tauri 配置、权限、能力和编译所需的最小前端占位页。 |
 | `crates/` | Cargo 工作区内的扩展 SDK 与原生 FFI 测试库。 |
-| `src-tauri/icons/` | 编译期嵌入 `bt` 和 `bt_app` 的图标。 |
+| `src-tauri/icons/` | 编译期嵌入 `bt` 和 `bt-app` 的图标。 |
 | `examples/` | 供使用者、贡献者和 CI 运行的语言、扩展、Web 与桌面示例。 |
 | `benches/` | 可重复执行的质量与性能工作负载。 |
 | `tools/quality/` | 对外公开的回归、基准和长稳验证脚本。 |

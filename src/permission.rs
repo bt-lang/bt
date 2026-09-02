@@ -42,7 +42,7 @@ pub enum Capability {
     Device,
     /// Environment variable capabilities, corresponding to `BT.env()`, `BT.set_env()`, `BT.envs()` and PATH overlays.
     Env,
-    /// Desktop API capabilities, reserved for `bt_app`'s window, tray, clipboard, notification, and dialog boundaries.
+    /// Desktop API capabilities, reserved for `bt-app`'s window, tray, clipboard, notification, and dialog boundaries.
     Desktop,
     /// Screen capture capability, corresponding to `bt.screen`'s full-screen color selection and frame selection screenshots.
     Screen,
@@ -281,7 +281,7 @@ fn parse_capability(name: &str) -> Option<Capability> {
         "mysql" | "db" | "database" => Some(Capability::Mysql),
         "device" | "serial" => Some(Capability::Device),
         "env" | "environment" | "path" => Some(Capability::Env),
-        "desktop" | "app" | "bt_app" => Some(Capability::Desktop),
+        "desktop" | "app" | "bt-app" | "bt_app" => Some(Capability::Desktop),
         "screen" | "capture" | "screenshot" => Some(Capability::Screen),
         #[cfg(feature = "ffi")]
         "ffi" | "native" => Some(Capability::Ffi),
@@ -340,11 +340,16 @@ mod tests {
     #[test]
     fn capability_aliases_are_supported() {
         let config =
-            PermissionConfig::from_values(Some("file,network,reqwest,database"), None).unwrap();
+            PermissionConfig::from_values(Some("file,network,reqwest,database,bt-app"), None)
+                .unwrap();
         assert!(config.is_allowed(Capability::Fs));
         assert!(config.is_allowed(Capability::Net));
         assert!(config.is_allowed(Capability::Http));
         assert!(config.is_allowed(Capability::Mysql));
+        assert!(config.is_allowed(Capability::Desktop));
+
+        let legacy = PermissionConfig::from_values(Some("bt_app"), None).unwrap();
+        assert!(legacy.is_allowed(Capability::Desktop));
     }
 
     /// The screen capture capability should support stable names and common screenshot aliases.

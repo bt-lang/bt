@@ -77,7 +77,7 @@ jobs:
           retention-days: 1
 
   build:
-    name: Build bt and bt_app (${{ matrix.name }})
+    name: Build bt and bt-app (${{ matrix.name }})
     needs: notices
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
@@ -92,7 +92,7 @@ jobs:
             artifact_stem: bt-windows-x64
             expected_host: x86_64-pc-windows-msvc
             bt_path: target/release/bt.exe
-            bt_app_path: target/release/bt_app.exe
+            bt_app_path: target/release/bt-app.exe
 
           - name: linux-x64
             # xcap 0.9.8 pulls in pipewire-rs 0.10, whose generated SPA
@@ -103,7 +103,7 @@ jobs:
             artifact_stem: bt-linux-x64
             expected_host: x86_64-unknown-linux-gnu
             bt_path: target/x86_64-unknown-linux-musl/release/bt
-            bt_app_path: target/release/bt_app
+            bt_app_path: target/release/bt-app
 
           - name: macos-arm64
             os: macos-15
@@ -111,7 +111,7 @@ jobs:
             artifact_stem: bt-macos-arm64
             expected_host: aarch64-apple-darwin
             bt_path: target/release/bt
-            bt_app_path: target/release/bt_app
+            bt_app_path: target/release/bt-app
 
           - name: macos-x64
             os: macos-15-intel
@@ -119,7 +119,7 @@ jobs:
             artifact_stem: bt-macos-x64
             expected_host: x86_64-apple-darwin
             bt_path: target/release/bt
-            bt_app_path: target/release/bt_app
+            bt_app_path: target/release/bt-app
 
     steps:
       - name: Check out source
@@ -239,8 +239,8 @@ jobs:
         if: matrix.platform == 'linux'
         run: cargo build --locked --release --target x86_64-unknown-linux-musl --no-default-features --features extensions --bin bt
 
-      - name: Build bt_app
-        run: cargo build --locked --release --features desktop --bin bt_app
+      - name: Build bt-app
+        run: cargo build --locked --release --features desktop --bin bt-app
 
       - name: Stage programs, licenses, and notices
         shell: pwsh
@@ -267,7 +267,7 @@ jobs:
       - name: Preserve Unix executable permissions
         if: matrix.platform != 'windows'
         shell: bash
-        run: chmod +x dist/bt dist/bt_app
+        run: chmod +x dist/bt dist/bt-app
 
       - name: Package Windows artifact
         if: matrix.platform == 'windows'
@@ -288,9 +288,9 @@ jobs:
           }
 
           $programs = if ('${{ matrix.platform }}' -eq 'windows') {
-            @('bt.exe', 'bt_app.exe')
+            @('bt.exe', 'bt-app.exe')
           } else {
-            @('bt', 'bt_app')
+            @('bt', 'bt-app')
           }
           $expected = @($programs + @('COPYRIGHT', 'LICENSE-APACHE', 'LICENSE-MIT', 'README.md', 'README.zh-CN.md', 'THIRD-PARTY-NOTICES.txt') | Sort-Object)
 

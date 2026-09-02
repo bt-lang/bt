@@ -4,7 +4,7 @@ use crate::error::BtError;
 use std::path::{Path, PathBuf};
 use tauri::image::Image;
 
-/// The bt_app runtime default icon must share the same source as the exe resource icon.
+/// The bt-app runtime default icon must share the same source as the exe resource icon.
 const DEFAULT_BT_APP_ICON_BYTES: &[u8] = include_bytes!("../../src-tauri/icons/app.ico");
 
 /// Fixed resource group ID used for the application's main icon in Windows PE.

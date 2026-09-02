@@ -215,7 +215,7 @@ pub fn create_project(
     Ok(CreateProjectResult { files })
 }
 
-/// Restarts the current bt_app process.
+/// Restarts the current bt-app process.
 pub fn restart_current_app() -> Result<(), BtError> {
     let exe = std::env::current_exe()?;
     let cwd = std::env::current_dir()?;

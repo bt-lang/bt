@@ -723,14 +723,14 @@ pub fn app_info(path: String) -> Result<api::app::BtrAppInfo, String> {
     api::app::info(path)
 }
 
-/// Launch an independent BTR application process with the current bt_app runtime.
+/// Launch an independent BTR application process with the current bt-app runtime.
 #[tauri::command]
 pub fn app_run(path: String, args: Vec<String>) -> Result<api::app::BtrRunResult, String> {
     require_desktop_permission()?;
     api::app::run(path, args)
 }
 
-/// Return the bt_app engine version.
+/// Return the bt-app engine version.
 #[tauri::command]
 pub fn app_engine_version() -> Result<String, String> {
     require_desktop_permission()?;
@@ -835,7 +835,7 @@ pub fn project_create(state: State<AppState>, input: CreateProjectInput) -> Json
     }
 }
 
-/// Restart the current bt_app program.
+/// Restart the current bt-app program.
 #[tauri::command]
 pub fn project_restart() -> Result<(), String> {
     require_desktop_permission()?;

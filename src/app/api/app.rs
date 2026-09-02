@@ -65,7 +65,7 @@ pub struct BtrRunResult {
     pub id: String,
 }
 
-/// Returns the bt_app engine version.
+/// Returns the bt-app engine version.
 pub fn engine_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
@@ -163,7 +163,7 @@ pub fn info(path: String) -> Result<BtrAppInfo, String> {
     })
 }
 
-/// Launches a standalone BTR application process with the current bt_app runtime.
+/// Launches a standalone BTR application process with the current bt-app runtime.
 pub fn run(path: String, args: Vec<String>) -> Result<BtrRunResult, String> {
     validate_btr_run_args(&args)?;
     let path = PathBuf::from(required_text(path, "BTR path")?);
@@ -173,7 +173,7 @@ pub fn run(path: String, args: Vec<String>) -> Result<BtrRunResult, String> {
     let package = BtrPackage::open(&path).map_err(|err| err.to_string())?;
     let id = package.config().app.id.clone();
     let show_console = package.config().dev.console;
-    let exe = std::env::current_exe().map_err(|err| map_error("Read bt_app path", err))?;
+    let exe = std::env::current_exe().map_err(|err| map_error("Read bt-app path", err))?;
     let mut command = Command::new(exe);
     command
         .arg(crate::bt_app::INTERNAL_RUN_BTR_ARG)

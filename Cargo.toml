@@ -48,7 +48,7 @@ name = "bt"
 path = "src/bt_cli_main.rs"
 
 [[bin]]
-name = "bt_app"
+name = "bt-app"
 path = "src/main.rs"
 required-features = ["desktop"]
 

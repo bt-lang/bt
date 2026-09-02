@@ -88,7 +88,7 @@ fn build_output_exe(
     Ok(file_count)
 }
 
-/// Packages the current directory as a standalone BTR file without the bt_app runtime.
+/// Packages the current directory as a standalone BTR file without the bt-app runtime.
 pub fn pack_project() -> Result<(), BtError> {
     let project_dir = env::current_dir()?;
     let config = load_build_config(&project_dir)?;
@@ -340,7 +340,7 @@ pub fn bundle_check() -> Result<(), BtError> {
 /// Placeholder entry point for platform exports.
 pub fn export_project(platform: &str) -> Result<(), BtError> {
     println!(
-        "bt_app export: platform export support will be added later; target platform: {}",
+        "bt-app export: platform export support will be added later; target platform: {}",
         platform
     );
     Ok(())

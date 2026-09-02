@@ -62,10 +62,10 @@ powershell -ExecutionPolicy Bypass -File tools/quality/release-check.ps1 -SkipDe
 
 GitHub 流水线会先生成许可证清单，再产生四个经过校验的 ZIP：
 
-- `bt-windows-x64.zip`：`bt.exe` 和 `bt_app.exe`。
-- `bt-linux-x64.zip`：静态链接 musl 的 `bt` 和 GNU `bt_app`。
-- `bt-macos-arm64.zip`：Apple Silicon `bt` 和 `bt_app`。
-- `bt-macos-x64.zip`：Intel `bt` 和 `bt_app`。
+- `bt-windows-x64.zip`：`bt.exe` 和 `bt-app.exe`。
+- `bt-linux-x64.zip`：静态链接 musl 的 `bt` 和 GNU `bt-app`。
+- `bt-macos-arm64.zip`：Apple Silicon `bt` 和 `bt-app`。
+- `bt-macos-x64.zip`：Intel `bt` 和 `bt-app`。
 
 实际文件名会在 `.zip` 前包含 Cargo 包版本。每个归档中的清单只覆盖该归档
 两个程序实际采用的 target 和 feature 依赖图。手动通过 `workflow_dispatch`

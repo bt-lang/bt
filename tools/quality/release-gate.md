@@ -67,10 +67,10 @@ powershell -ExecutionPolicy Bypass -File tools/quality/release-check.ps1 -SkipDe
 The GitHub workflow generates notices before building and produces four
 verified ZIP archives:
 
-- `bt-windows-x64.zip`: `bt.exe` and `bt_app.exe`.
-- `bt-linux-x64.zip`: statically linked musl `bt` and GNU `bt_app`.
-- `bt-macos-arm64.zip`: Apple Silicon `bt` and `bt_app`.
-- `bt-macos-x64.zip`: Intel `bt` and `bt_app`.
+- `bt-windows-x64.zip`: `bt.exe` and `bt-app.exe`.
+- `bt-linux-x64.zip`: statically linked musl `bt` and GNU `bt-app`.
+- `bt-macos-arm64.zip`: Apple Silicon `bt` and `bt-app`.
+- `bt-macos-x64.zip`: Intel `bt` and `bt-app`.
 
 Archive names include the Cargo package version before `.zip`. Each archive
 contains the notice generated from exactly the target and feature graphs used

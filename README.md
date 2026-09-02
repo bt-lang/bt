@@ -58,7 +58,7 @@ When the current directory contains `main.bt`, running `bt` without a source arg
 Run the basic desktop example:
 
 ```text
-cargo run --release --features desktop --bin bt_app -- run examples/desktop
+cargo run --release --features desktop --bin bt-app -- run examples/desktop
 ```
 
 ## Build and test
@@ -66,7 +66,7 @@ cargo run --release --features desktop --bin bt_app -- run examples/desktop
 | Target | Command |
 |---|---|
 | CLI runtime | `cargo build --release --bin bt` |
-| Desktop runtime | `cargo build --release --features desktop --bin bt_app` |
+| Desktop runtime | `cargo build --release --features desktop --bin bt-app` |
 | Default test suite | `cargo test` |
 | Desktop test suite | `cargo test --features desktop` |
 
@@ -75,7 +75,7 @@ Windows desktop builds require the MSVC toolchain, the Windows SDK, and the WebV
 Inside a desktop project containing `app.json`, use the built runtime to create a bundled executable:
 
 ```text
-path/to/bt_app build
+path/to/bt-app build
 ```
 
 ## Examples
@@ -150,7 +150,7 @@ The catalog below covers every top-level entry in [`examples/`](examples/). Some
 | `src/` | Lexer, parser, compiler, bytecode VM, standard library, web runtime, desktop runtime, and bundle support. |
 | `src-tauri/` | Tauri configuration, permissions, capabilities, and the minimal compile-time frontend placeholder. |
 | `crates/` | The extension SDK and the native FFI test library used by the Cargo workspace. |
-| `src-tauri/icons/` | Compile-time icons embedded in `bt` and `bt_app`. |
+| `src-tauri/icons/` | Compile-time icons embedded in `bt` and `bt-app`. |
 | `examples/` | Runnable language, extension, web, and desktop examples used by contributors and CI. |
 | `benches/` | Repeatable quality and performance workloads. |
 | `tools/quality/` | Public regression, benchmark, and long-running validation scripts. |

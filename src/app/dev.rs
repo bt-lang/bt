@@ -1,4 +1,4 @@
-//! File watching and hot reload for bt_app development mode.
+//! File watching and hot reload for bt-app development mode.
 
 use crate::app::runtime::{load_dev_runtime_for_reload, runtime_navigation_url, AppState};
 use crate::bundle::builder::normalize_bundle_name;
@@ -280,7 +280,7 @@ fn ensure_window_creation_config_unchanged(
     };
     if next_config.window.transparent != previous_config.window.transparent {
         return Err(BtError::Config(
-            "window.transparent can only be applied when creating the window; restart bt_app after changing it".to_string(),
+            "window.transparent can only be applied when creating the window; restart bt-app after changing it".to_string(),
         ));
     }
     Ok(())
@@ -668,7 +668,7 @@ mod tests {
             ensure_window_creation_config_unchanged(&dir, &crate::app::config::AppJson::default())
                 .unwrap_err()
                 .to_string();
-        assert!(error.contains("restart bt_app after changing it"));
+        assert!(error.contains("restart bt-app after changing it"));
 
         let _ = fs::remove_dir_all(dir);
     }

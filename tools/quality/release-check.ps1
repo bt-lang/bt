@@ -64,7 +64,7 @@ try {
     Invoke-GateCommand -Title "debug CLI build" -Command { cargo build --locked --bin bt }
     Invoke-GateCommand -Title "release CLI build" -Command { cargo build --locked --release --bin bt }
     if (-not $SkipDesktop) {
-        Invoke-GateCommand -Title "release desktop build" -Command { cargo build --locked --release --features desktop --bin bt_app }
+        Invoke-GateCommand -Title "release desktop build" -Command { cargo build --locked --release --features desktop --bin bt-app }
     }
 
     $debugBt = Join-Path $RepoRoot ("target/debug/bt" + $ExeSuffix)
@@ -101,7 +101,7 @@ try {
 
         if ($env:OS -eq "Windows_NT") {
             Copy-Item -LiteralPath $releaseBt -Destination $stage
-            Copy-Item -LiteralPath (Join-Path $RepoRoot "target/release/bt_app.exe") -Destination $stage
+            Copy-Item -LiteralPath (Join-Path $RepoRoot "target/release/bt-app.exe") -Destination $stage
             Invoke-GateCommand -Title "Windows release third-party notice" -Command {
                 tools/compliance/generate-third-party-licenses.ps1 `
                     -ReleaseProfile windows-x64 `
@@ -135,7 +135,7 @@ try {
                 $archiveBt = Join-Path $RepoRoot "target/x86_64-unknown-linux-musl/release/bt"
             }
             Copy-Item -LiteralPath $archiveBt -Destination $stage
-            Copy-Item -LiteralPath (Join-Path $RepoRoot "target/release/bt_app") -Destination $stage
+            Copy-Item -LiteralPath (Join-Path $RepoRoot "target/release/bt-app") -Destination $stage
             Invoke-GateCommand -Title "$profile release third-party notice" -Command {
                 tools/compliance/generate-third-party-licenses.ps1 `
                     -ReleaseProfile $profile `

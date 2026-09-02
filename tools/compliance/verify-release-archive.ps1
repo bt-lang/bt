@@ -34,7 +34,7 @@ try {
         throw "Release archive must not contain Git metadata."
     }
 
-    $programs = if ($Platform -eq "windows") { @("bt.exe", "bt_app.exe") } else { @("bt", "bt_app") }
+    $programs = if ($Platform -eq "windows") { @("bt.exe", "bt-app.exe") } else { @("bt", "bt-app") }
     $required = @(
         "README.md",
         "README.zh-CN.md",
