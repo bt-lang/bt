@@ -1,144 +1,135 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500"
+     viewBox="0 0 132.29166 132.29167" class="bt-cat-lively"
+     role="img" aria-labelledby="bt-cat-title bt-cat-description">
+  <title id="bt-cat-title">BT curious cat</title>
+  <desc id="bt-cat-description">The original black BT cat gently tilts its head, perks and flicks its ears, looks around, blinks, and swishes its curled tail.</desc>
+  <style><![CDATA[
+    /* View-box origins keep the joints stable at every rendered size. */
+    .bt-cat-lively .cat-motion { transform-box: view-box; }
+    .bt-cat-lively .cat-head {
+      transform-origin: 61px 85px;
+      animation: bt-cat-head 9s cubic-bezier(.4, 0, .2, 1) infinite;
+    }
+    .bt-cat-lively .cat-ear-left {
+      transform-origin: 33px 40px;
+      animation: bt-cat-ear-left 9s ease-in-out infinite;
+    }
+    .bt-cat-lively .cat-ear-right {
+      transform-origin: 80px 42px;
+      animation: bt-cat-ear-right 9s ease-in-out infinite;
+    }
+    .bt-cat-lively .cat-eyelid {
+      animation: bt-cat-blink 36s ease-in-out infinite;
+    }
+    .bt-cat-lively .cat-eyelid-upper { --lid-travel: 27px; }
+    .bt-cat-lively .cat-eyelid-lower { --lid-travel: -11px; }
+    .bt-cat-lively .cat-pupil {
+      animation: bt-cat-look 9s cubic-bezier(.4, 0, .2, 1) infinite;
+    }
+    .bt-cat-lively .cat-tail {
+      transform-origin: 84px 103px;
+      animation: bt-cat-tail 2.8s ease-in-out infinite;
+    }
+    .bt-cat-lively .cat-body {
+      transform-origin: 63px 112px;
+      animation: bt-cat-breathe 4.5s ease-in-out infinite;
+    }
+    /* The gaze anticipates each head turn; held poses give the cat time to listen. */
+    @keyframes bt-cat-head {
+      0%, 8%, 100% { transform: translate(0, 0) rotate(0deg); }
+      18%, 29% { transform: translate(-.35px, -.6px) rotate(-4deg); }
+      39% { transform: translate(0, .2px) rotate(1.2deg); }
+      46% { transform: translate(0, 0) rotate(0deg); }
+      59%, 70% { transform: translate(.45px, -.8px) rotate(5deg); }
+      82% { transform: translate(0, .15px) rotate(-1deg); }
+      91% { transform: translate(0, 0) rotate(0deg); }
+    }
+    /* Each ear turns once, holds its listening pose, then returns without overshoot.
+       Separate time windows prevent the ears from wobbling together. */
+    @keyframes bt-cat-ear-left {
+      0%, 12%, 30%, 100% { transform: rotate(0deg); }
+      16%, 24% { transform: rotate(-11deg); }
+    }
+    @keyframes bt-cat-ear-right {
+      0%, 55%, 78%, 100% { transform: rotate(0deg); }
+      60%, 70% { transform: rotate(8deg); }
+    }
+    @keyframes bt-cat-look {
+      0%, 5%, 100% { transform: translate(0, 0); }
+      12%, 28% { transform: translate(3.2px, -1.5px); }
+      39%, 46% { transform: translate(1.5px, .1px); }
+      53%, 70% { transform: translate(6px, -.7px); }
+      79%, 85% { transform: translate(2.3px, .5px); }
+      94% { transform: translate(0, 0); }
+    }
+    /* Curved lids cover unscaled eyes: 90 ms to close, a 30 ms rest, and 180 ms to open.
+       Uneven intervals include just one double blink per four head-motion cycles. */
+    @keyframes bt-cat-blink {
+      0%, 7.777778%, 8.611111%, 19.722222%, 20.555556%,
+      34.444444%, 35.277778%, 50%, 50.833333%,
+      66.111111%, 66.944444%, 67.166667%, 68%,
+      84.166667%, 85%, 95.555556%, 96.388889%, 100% {
+        transform: translateY(0);
+      }
+      8.027778%, 8.111111%, 19.972222%, 20.055556%,
+      34.694444%, 34.777778%, 50.25%, 50.333333%,
+      66.361111%, 66.444444%, 67.416667%, 67.5%,
+      84.416667%, 84.5%, 95.805556%, 95.888889% {
+        transform: translateY(var(--lid-travel));
+      }
+    }
+    @keyframes bt-cat-tail {
+      0%, 100% { transform: rotate(-3deg); }
+      50% { transform: rotate(4deg); }
+    }
+    @keyframes bt-cat-breathe {
+      0%, 100% { transform: scale(1, 1); }
+      50% { transform: scale(1.006, 1.012); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .bt-cat-lively .cat-motion { animation: none; }
+    }
+  ]]></style>
 
-<svg
-   width="500"
-   height="500"
-   viewBox="0 0 132.29166 132.29167"
-   version="1.1"
-   id="svg1"
-   xml:space="preserve"
-   sodipodi:docname="cat_animated.svg"
-   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg"><sodipodi:namedview
-   id="namedview1"
-   pagecolor="#ffffff"
-   bordercolor="#000000"
-   borderopacity="0.25"
-   inkscape:showpageshadow="2"
-   inkscape:pageopacity="0.0"
-   inkscape:pagecheckerboard="0"
-   inkscape:deskcolor="#d1d1d1"
-   inkscape:document-units="mm"
-   inkscape:zoom="0.36409849"
-   inkscape:cx="-836.31218"
-   inkscape:cy="-276.02422"
-   inkscape:window-width="1920"
-   inkscape:window-height="1009"
-   inkscape:window-x="-8"
-   inkscape:window-y="-8"
-   inkscape:window-maximized="1"
-   inkscape:current-layer="layer2" /><defs
-   id="defs1" />
-<style
-   id="cat-animation-css"><![CDATA[
-  /* Blink by briefly squashing both eyes. */
-  #layer4 {
-    transform-box: fill-box;
-    transform-origin: center center;
-    animation: cat-blink 4.2s infinite;
-  }
-  #path5,
-	#ellipse6 {
-	  transform-box: fill-box;
-	  transform-origin: center center;
-	  animation: pupil-look 5.2s ease-in-out infinite;
-	}
-	@keyframes pupil-look {
-	  0%, 18% {
-		transform: translate(0, 0);
-	  }
+  <!-- Mask each eye once so overlapping lids cannot leave antialiased white outlines. -->
+  <defs>
+    <mask id="bt-cat-eye-left-v3" maskUnits="userSpaceOnUse" x="14" y="35" width="36" height="38" style="mask-type:luminance">
+      <rect x="14" y="35" width="36" height="38" fill="#ffffff"/>
+      <path class="cat-eyelid cat-eyelid-upper cat-motion" d="M14 0 H50 V34 Q32 40 14 34 Z" fill="#000000"/>
+      <path class="cat-eyelid cat-eyelid-lower cat-motion" d="M14 73 Q32 65 50 73 V95 H14 Z" fill="#000000"/>
+    </mask>
+    <mask id="bt-cat-eye-right-v3" maskUnits="userSpaceOnUse" x="50.6" y="34.74" width="36.38" height="38" style="mask-type:luminance">
+      <rect x="50.6" y="34.74" width="36.38" height="38" fill="#ffffff"/>
+      <path class="cat-eyelid cat-eyelid-upper cat-motion" d="M50.6 0 H86.98 V33.74 Q68.79 39.74 50.6 33.74 Z" fill="#000000"/>
+      <path class="cat-eyelid cat-eyelid-lower cat-motion" d="M50.6 72.74 Q68.79 64.74 86.98 72.74 V95 H50.6 Z" fill="#000000"/>
+    </mask>
+  </defs>
 
-	  28%, 42% {
-		transform: translate(2.2px, -0.4px);
-	  }
+  <!-- Preserve the original tail and paw outlines. The neck overlaps the head. -->
+  <g fill="#000000">
+    <path class="cat-tail cat-motion" d="m 83.604657,101.25343 c 0,0 20.614553,8.76118 30.406463,-6.442052 4.6512,-6.429118 1.09355,-13.017037 -3.80404,-13.7628 -5.73894,-0.873876 -6.77505,4.546858 -5.66577,5.90351 0.58112,0.710709 1.45631,1.645043 2.94794,0.50377 1.51133,-1.156334 3.75179,-0.11727 3.62295,1.87978 -0.12884,1.99704 -2.74752,5.782805 -9.31455,3.280873 -6.49773,-2.475532 -6.636787,-16.094744 2.5504,-18.290843 9.99153,-2.388369 20.48182,3.600237 18.95634,16.227499 -0.9026,7.471339 -8.30625,19.164233 -22.86147,20.320753 -13.22954,1.05119 -19.411655,-3.17883 -19.411655,-3.17883 -3.257383,-4.95099 2.573392,-6.44166 2.573392,-6.44166 z"/>
+    <path class="cat-body cat-motion" d="M75.874207 84.504108 C79.739427 87.338608 83.604657 101.25343 83.604657 101.25343 C83.604657 101.25343 84.323029 103.91376 82.187407 107.56663 C82.187407 107.56663 81.285527 110.52997 78.451027 111.43186 C75.616527 112.33375 68.014907 114.13752 68.143747 110.78766 C68.143747 109.88577 67.585677 110.39271 67.585677 110.39271 C67.585677 110.39271 64.670337 111.16710 62.347177 110.48381 C61.572787 111.39485 61.663897 113.08028 58.885212 113.03473 C56.334293 112.80697 56.060978 111.48595 56.562054 109.61832 C55.013281 108.75283 54.056685 108.43396 53.510059 108.02399 C53.008986 109.20835 52.325704 112.35145 49.045948 111.62261 C45.492882 110.48381 46.950551 107.88733 47.952698 107.34071 C47.497175 104.74424 47.271517 102.02646 45.854269 98.547758 C44.694701 95.970938 44.694701 91.332668 45.338905 88.111638 L47 75 Q64 73 75.874207 84.504108 Z"/>
 
-	  52%, 64% {
-		transform: translate(4.2px, 0.2px);
-	  }
-
-	  74%, 84% {
-		transform: translate(1.2px, 0.5px);
-	  }
-
-	  100% {
-		transform: translate(0, 0);
-	  }
-	}
-
-  @keyframes cat-blink {
-    0%, 88%, 92%, 100% { transform: scaleY(1); }
-    90% { transform: scaleY(0.08); }
-  }
-
-  /* Let the tail sway gently around its base. */
-  #path6 {
-    transform-box: fill-box;
-    transform-origin: 6% 70%;
-    animation: tail-wag 1.25s ease-in-out infinite;
-  }
-
-  @keyframes tail-wag {
-    0%, 100% { transform: rotate(-4deg); }
-    50% { transform: rotate(5deg); }
-  }
-]]></style><g
-   inkscape:groupmode="layer"
-   id="layer2"
-   inkscape:label="Cat body"
-   style="display:inline"><path
-     style="display:inline;fill:#000000;stroke-width:0.264583"
-     d="m 83.604657,101.25343 c 0,0 20.614553,8.76118 30.406463,-6.442052 4.6512,-6.429118 1.09355,-13.017037 -3.80404,-13.7628 -5.73894,-0.873876 -6.77505,4.546858 -5.66577,5.90351 0.58112,0.710709 1.45631,1.645043 2.94794,0.50377 1.51133,-1.156334 3.75179,-0.11727 3.62295,1.87978 -0.12884,1.99704 -2.74752,5.782805 -9.31455,3.280873 -6.49773,-2.475532 -6.636787,-16.094744 2.5504,-18.290843 9.99153,-2.388369 20.48182,3.600237 18.95634,16.227499 -0.9026,7.471339 -8.30625,19.164233 -22.86147,20.320753 -13.22954,1.05119 -19.411655,-3.17883 -19.411655,-3.17883 -3.257383,-4.95099 2.573392,-6.44166 2.573392,-6.44166 z"
-     id="path6"
-     inkscape:label="Tail"
-     sodipodi:nodetypes="ccsssssssccc" /><path
-     style="display:inline;fill:#000000;stroke-width:0.264583"
-     d="m 23.627851,37.463728 c 0,0 3.279754,-13.48344 8.381595,-17.49203 4.373007,2.55092 9.474845,13.48344 9.474845,13.48344 0,0 12.025768,-4.73743 29.153376,0.72883 4.73742,-7.65276 11.29693,-12.7546 12.39018,-13.48343 1.09325,-0.72884 5.37516,1.27546 6.10399,21.95613 3.64417,3.55307 11.737513,15.82157 7.6146,27.93262 -4.89596,11.338 -14.43019,13.39945 -20.87223,13.91482 3.86522,2.8345 7.73045,16.749322 7.73045,16.749322 0,0 0.718372,2.66033 -1.41725,6.3132 0,0 -0.90188,2.96334 -3.73638,3.86523 -2.8345,0.90189 -10.43612,2.70566 -10.30728,-0.6442 0,-0.90189 -0.55807,-0.39495 -0.55807,-0.39495 0,0 -2.91534,0.77439 -5.2385,0.0911 -0.77439,0.91104 -0.68328,2.59647 -3.461965,2.55092 -2.550919,-0.22776 -2.824234,-1.54878 -2.323158,-3.41641 -1.548773,-0.86549 -2.505369,-1.18436 -3.051995,-1.59433 -0.501073,1.18436 -1.184355,4.32746 -4.464111,3.59862 -3.553066,-1.1388 -2.095397,-3.73528 -1.09325,-4.2819 -0.455523,-2.59647 -0.681181,-5.31425 -2.098429,-8.792952 -1.159568,-2.57682 -1.159568,-7.21509 -0.515364,-10.43612 -4.509434,-0.77304 -35.4312561,-3.86523 -27.958483,-24.22209 -3.865226,-5.41132 -7.088965,-17.03389 6.247429,-26.42583 z"
-     id="path1"
-     inkscape:label="Body"
-     sodipodi:nodetypes="ccccscccccsccccccccccccc" /></g><g
-   inkscape:groupmode="layer"
-   id="layer3"
-   inkscape:label="Whiskers"><path
-     style="fill:#000000;stroke-width:0.264583"
-     d="m 16.703925,68.530288 -9.2015341,-1.09325 c 0,0 -1.184357,0.72883 -0.0911,1.73098 1.730981,-0.18221 9.1104301,0.54663 9.1104301,0.54663 z"
-     id="path2"
-     inkscape:label="Second whisker" /><path
-     style="fill:#000000;stroke-width:0.264583"
-     d="m 17.122742,73.101688 c 0,0 -9.2765491,2.77007 -8.6967651,4.38058 0.515366,1.35284 2.5768201,-0.25768 3.4787081,-0.70862 0.901885,-0.45094 4.380589,-2.38356 5.475737,-2.44798 -0.128839,-0.6442 -0.25768,-1.22398 -0.25768,-1.22398 z"
-     id="path3"
-     inkscape:label="First whisker" /></g><g
-   inkscape:groupmode="layer"
-   id="layer4"
-   inkscape:label="Eyes"><ellipse
-     style="fill:#ffffff;stroke-width:0.337994"
-     id="path4"
-     cx="32.197128"
-     cy="53.467247"
-     rx="14.816708"
-     ry="15.074389"
-     inkscape:label="Left eye white" /><ellipse
-     style="fill:#000000;stroke-width:0.264583"
-     id="path5"
-     cx="25.110893"
-     cy="57.189842"
-     rx="5.1536369"
-     ry="6.1843643"
-     inkscape:label="Left pupil" /><ellipse
-     style="fill:#ffffff;stroke-width:0.343821"
-     id="ellipse5"
-     cx="68.787964"
-     cy="53.209572"
-     rx="15.074389"
-     ry="15.332071"
-     inkscape:label="Right eye white" /><ellipse
-     style="fill:#000000;stroke-width:0.264583"
-     id="ellipse6"
-     cx="61.444038"
-     cy="57.189842"
-     rx="5.1536369"
-     ry="6.1843643"
-     inkscape:label="Right pupil" /></g></svg>
+    <!-- Ears, whiskers, and eyes inherit the head motion in the same local frame. -->
+    <g class="cat-head cat-motion">
+      <path class="cat-ear-left cat-motion" d="M23.627851 37.463728 C23.627851 37.463728 26.907605 23.980288 32.009446 19.971698 C36.382453 22.522618 41.484291 33.455138 41.484291 33.455138 L44 45 L23 47 Z"/>
+      <path class="cat-ear-right cat-motion" d="M70.637667 34.183968 C75.375087 26.531208 81.934597 21.429368 83.027847 20.700538 C84.121097 19.971698 88.403007 21.975998 89.131837 42.656668 L88 51 L69 45 Z"/>
+      <path class="cat-face" d="M23.627851 37.463728 Q32 32.5 41.484291 33.455138 C41.484291 33.455138 53.510059 28.717708 70.637667 34.183968 Q82 36 89.131837 42.656668 C92.776007 46.209738 100.869350 58.478238 96.746437 70.589288 C91.850477 81.927288 82.316247 83.988738 75.874207 84.504108 C67.5 87.8 55.5 89.9 45.338905 88.111638 C40.829471 87.338598 9.907649 84.246408 17.380422 63.889548 C13.515196 58.478228 10.291457 46.855658 23.627851 37.463718 Z"/>
+      <g class="cat-whiskers">
+        <path d="m16.703925 68.530288 -9.2015341 -1.09325 c0 0 -1.184357 .72883 -.0911 1.73098 1.730981 -.18221 9.1104301 .54663 9.1104301 .54663 z"/>
+        <path d="m17.122742 73.101688 c0 0 -9.2765491 2.77007 -8.6967651 4.38058 .515366 1.35284 2.5768201 -.25768 3.4787081 -.70862 .901885 -.45094 4.380589 -2.38356 5.475737 -2.44798 -.128839 -.6442 -.25768 -1.22398 -.25768 -1.22398 z"/>
+      </g>
+      <g class="cat-eyes">
+        <g mask="url(#bt-cat-eye-left-v3)">
+          <ellipse fill="#ffffff" cx="32.197128" cy="53.467247" rx="14.816708" ry="15.074389"/>
+          <ellipse class="cat-pupil cat-motion" cx="25.110893" cy="57.189842" rx="5.1536369" ry="6.1843643"/>
+        </g>
+        <g mask="url(#bt-cat-eye-right-v3)">
+          <ellipse fill="#ffffff" cx="68.787964" cy="53.209572" rx="15.074389" ry="15.332071"/>
+          <ellipse class="cat-pupil cat-motion" cx="61.444038" cy="57.189842" rx="5.1536369" ry="6.1843643"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>
