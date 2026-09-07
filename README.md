@@ -4,7 +4,7 @@
   <p><strong>One compact language runtime for scripts, web services, desktop apps, FFI, and extensions.</strong></p>
   <p>
     <a href="README.md">English</a> ·
-    <a href="README.zh-CN.md">Simplified Chinese</a> ·
+    <a href="README.zh-CN.md">简体中文</a> ·
     <a href="https://btlang.org/en">Website</a> ·
     <a href="https://btlang.org/en/docs/index">Documentation</a> ·
     <a href="https://btlang.org/ai">AI Knowledge Base</a>
