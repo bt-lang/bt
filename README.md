@@ -6,7 +6,8 @@
     <a href="README.md">English</a> ·
     <a href="README.zh-CN.md">Simplified Chinese</a> ·
     <a href="https://btlang.org/en">Website</a> ·
-    <a href="https://btlang.org/en/docs/index">Documentation</a>
+    <a href="https://btlang.org/en/docs/index">Documentation</a> ·
+    <a href="https://btlang.org/ai">AI Knowledge Base</a>
   </p>
   <p>
     <img src="https://img.shields.io/badge/implemented%20in-Rust-CE422B?style=flat-square" alt="Implemented in Rust">
@@ -59,6 +60,16 @@ Run the basic desktop example:
 
 ```text
 cargo run --release --features desktop --bin bt-app -- run examples/desktop
+```
+
+## AI knowledge base
+
+The [BT AI Knowledge Base](https://btlang.org/ai) is the official machine-readable entry point for AI assistants and coding agents. It provides versioned guidance for BT language semantics, standard-library APIs, web and desktop development, extensions, FFI, and project constraints through a discoverable manifest and focused knowledge modules. When asking an AI tool to write, review, or explain BT code, give it this URL and ask it to load only the modules relevant to the task so that its answer follows the current BT contracts without filling the context with unrelated documentation.
+
+For example, include this instruction in your prompt:
+
+```text
+Read https://btlang.org/ai before working on this BT task, then load only the relevant knowledge modules.
 ```
 
 ## Build and test

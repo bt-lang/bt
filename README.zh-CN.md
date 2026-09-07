@@ -6,7 +6,8 @@
     <a href="README.md">English</a> ·
     <a href="README.zh-CN.md">简体中文</a> ·
     <a href="https://btlang.org/zh-hans">官网</a> ·
-    <a href="https://btlang.org/zh-hans/docs/index">官方文档</a>
+    <a href="https://btlang.org/zh-hans/docs/index">官方文档</a> ·
+    <a href="https://btlang.org/ai">AI 知识库</a>
   </p>
   <p>
     <img src="https://img.shields.io/badge/implemented%20in-Rust-CE422B?style=flat-square" alt="使用 Rust 实现">
@@ -59,6 +60,16 @@ cargo run --release --bin bt -- -c examples/compat/empty-null.bt
 
 ```text
 cargo run --release --features desktop --bin bt-app -- run examples/desktop
+```
+
+## AI 知识库
+
+[BT AI 知识库](https://btlang.org/ai)是提供给 AI 助手和编程智能体使用的官方机器可读入口。它通过可发现的清单和按主题拆分的知识模块，提供带版本的 BT 语言语义、标准库 API、Web 与桌面开发、扩展、FFI 及项目约束说明。当你让 AI 编写、审查或解释 BT 代码时，可以把这个链接交给它，并要求它只读取与当前任务有关的模块；这样既能让结果遵循最新版 BT 规范，也不会让无关文档占用过多上下文。
+
+例如，可以在提示词中加入：
+
+```text
+处理这个 BT 任务前，请先阅读 https://btlang.org/ai，然后只加载与任务相关的知识模块。
 ```
 
 ## 编译与测试
