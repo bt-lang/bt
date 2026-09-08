@@ -15,3 +15,13 @@ workspace = true
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
+serde_json = { version = "=1.0.151", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { version = "=0.2.189", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", optional = true, features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+[features]
+host-process = ["dep:serde_json", "dep:libc", "dep:windows-sys"]

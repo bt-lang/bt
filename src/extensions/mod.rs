@@ -14,6 +14,7 @@ pub mod cli;
 pub mod manager;
 pub mod manifest;
 pub mod package;
+pub mod process_host;
 pub mod registry;
 pub mod service;
 pub mod value_codec;

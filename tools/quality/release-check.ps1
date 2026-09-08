@@ -50,9 +50,10 @@ try {
 
     Invoke-GateCommand -Title "cargo fmt --all -- --check" -Command { cargo fmt --all -- --check }
     Invoke-GateCommand -Title "locked root metadata" -Command { cargo metadata --locked --all-features --format-version 1 | Out-Null }
-    Invoke-GateCommand -Title "locked SQLite metadata" -Command { cargo metadata --locked --all-features --format-version 1 --manifest-path examples/extension-development/sqlite/Cargo.toml | Out-Null }
+    Invoke-GateCommand -Title "SQLite format check" -Command { cargo fmt --manifest-path extension/sqlite/Cargo.toml -- --check }
+    Invoke-GateCommand -Title "locked SQLite metadata" -Command { cargo metadata --locked --all-features --format-version 1 --manifest-path extension/sqlite/Cargo.toml | Out-Null }
+    Invoke-GateCommand -Title "SQLite regression tests" -Command { cargo test --locked --manifest-path extension/sqlite/Cargo.toml }
     Invoke-GateCommand -Title "third-party license inventory" -Command { tools/compliance/generate-third-party-licenses.ps1 -Check }
-    Invoke-GateCommand -Title "SQLite package consistency" -Command { tools/compliance/verify-sqlite-packages.ps1 }
     Invoke-GateCommand -Title "exact RustSec advisory policy" -Command { tools/compliance/verify-rustsec-policy.ps1 }
     Invoke-GateCommand -Title "cargo test --locked" -Command { cargo test --locked }
     Invoke-GateCommand -Title "all-target, all-feature check" -Command { cargo check --locked --workspace --all-targets --all-features }

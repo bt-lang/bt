@@ -65,7 +65,6 @@ struct DbState {
 }
 
 /// State for a chained query object.
-#[derive(Clone)]
 struct QueryState {
     /// ID of the database object bound to the query.
     db_id: u64,
@@ -139,9 +138,7 @@ struct StatementPlan {
 
 bt_extension!(
     1 => entry_open,
-    2 => method_db_one,
-    3 => method_db_all,
-    4 => method_db_exec,
+    17 => entry_open,
     5 => method_db_transaction,
     6 => method_db_query,
     7 => method_db_close,
@@ -161,8 +158,7 @@ bt_extension_shutdown!(lifecycle_shutdown);
 bt_extension_stats!(lifecycle_stats);
 
 /// Initializes the current shared worker.
-fn lifecycle_init(config: BtValue) -> BtResult<BtValue> {
-    let _ = config;
+fn lifecycle_init(_config: BtValue) -> BtResult<BtValue> {
     STATS.with(|stats| {
         let mut stats = stats.borrow_mut();
         stats.init_calls = stats.init_calls.saturating_add(1);
@@ -196,12 +192,12 @@ fn lifecycle_stats() -> BtResult<BtValue> {
     ]))
 }
 
-/// Opens a SQLite database and returns a connection object.
+/// Opens a database for both `sqlite` and its deprecated `sqlite_open` alias.
 fn entry_open(args: Vec<BtValue>) -> BtResult<BtValue> {
-    expect_arg_count(&args, 2, "sqlite_open")?;
+    expect_arg_count(&args, 2, "sqlite")?;
     let path = expect_string(&args, 0, "path")?;
     if path.is_empty() {
-        return Err("sqlite_open path must not be empty".to_string());
+        return Err("sqlite path must not be empty".to_string());
     }
     let options = parse_options(args.get(1), "options")?;
     let conn = Connection::open(&path).map_err(sqlite_error)?;
@@ -224,39 +220,12 @@ fn entry_open(args: Vec<BtValue>) -> BtResult<BtValue> {
     )))
 }
 
-/// Executes SQL and returns the first row as an object, or empty when there is no result.
-fn method_db_one(args: Vec<BtValue>) -> BtResult<BtValue> {
-    expect_arg_count(&args, 3, "Sqlite.one")?;
-    let object = db_receiver(&args, "self")?;
-    let sql = expect_string(&args, 1, "sql")?;
-    let params = parse_params(args.get(2), "params")?;
-    with_db_mut(&object, |db| run_one(db, &sql, &params))
-}
-
-/// Executes SQL and returns an array of objects.
-fn method_db_all(args: Vec<BtValue>) -> BtResult<BtValue> {
-    expect_arg_count(&args, 3, "Sqlite.all")?;
-    let object = db_receiver(&args, "self")?;
-    let sql = expect_string(&args, 1, "sql")?;
-    let params = parse_params(args.get(2), "params")?;
-    with_db_mut(&object, |db| run_all(db, &sql, &params))
-}
-
-/// Executes a single SQL write and returns the number of affected rows.
-fn method_db_exec(args: Vec<BtValue>) -> BtResult<BtValue> {
-    expect_arg_count(&args, 3, "Sqlite.exec")?;
-    let object = db_receiver(&args, "self")?;
-    let sql = expect_string(&args, 1, "sql")?;
-    let params = parse_params(args.get(2), "params")?;
-    with_db_mut(&object, |db| run_exec(db, &sql, &params))
-}
-
 /// Executes multiple SQL statements serially in a SQLite transaction.
 fn method_db_transaction(args: Vec<BtValue>) -> BtResult<BtValue> {
     expect_arg_count(&args, 2, "Sqlite.transaction")?;
     let object = db_receiver(&args, "self")?;
     let plans = parse_transaction_plans(args.get(1), "statements")?;
-    with_db_mut(&object, |db| run_transaction(db, &plans))
+    with_db_mut(object.object_id, |db| run_transaction(db, &plans))
 }
 
 /// Creates a chained query object.
@@ -264,7 +233,7 @@ fn method_db_query(args: Vec<BtValue>) -> BtResult<BtValue> {
     expect_arg_count(&args, 2, "Sqlite.query")?;
     let object = db_receiver(&args, "self")?;
     let sql = expect_string(&args, 1, "sql")?;
-    with_db_mut(&object, |_| Ok(()))?;
+    with_db_mut(object.object_id, |_| Ok(()))?;
     let object_id = QUERIES.with(|queries| {
         queries.borrow_mut().insert(QueryState {
             db_id: object.object_id,
@@ -378,34 +347,33 @@ fn method_query_workers(args: Vec<BtValue>) -> BtResult<BtValue> {
 /// Executes a chained query and returns the first row as an object, or empty if there is no result.
 fn method_query_one(args: Vec<BtValue>) -> BtResult<BtValue> {
     expect_arg_count(&args, 1, "SqliteQuery.one")?;
-    let query = query_state(&args)?;
-    validate_query_read_method(&query, "one")?;
-    let db_object = ExtObject::new(DB_TYPE_ID, query.db_id, DB_TYPE_NAME);
-    with_db_mut(&db_object, |db| run_one(db, &query.sql, &query.params))
+    with_query(&args, |query| {
+        validate_query_read_method(query, "one")?;
+        with_db_mut(query.db_id, |db| run_one(db, &query.sql, &query.params))
+    })
 }
 
 /// Executes a chained query and returns an array of objects.
 fn method_query_all(args: Vec<BtValue>) -> BtResult<BtValue> {
     expect_arg_count(&args, 1, "SqliteQuery.all")?;
-    let query = query_state(&args)?;
-    validate_query_read_method(&query, "all")?;
-    let db_object = ExtObject::new(DB_TYPE_ID, query.db_id, DB_TYPE_NAME);
-    with_db_mut(&db_object, |db| run_all(db, &query.sql, &query.params))
+    with_query(&args, |query| {
+        validate_query_read_method(query, "all")?;
+        with_db_mut(query.db_id, |db| run_all(db, &query.sql, &query.params))
+    })
 }
 
-/// Executes a chained SQL write and returns the number of affected rows.
+/// Executes a chained SQL write and returns execution statistics.
 fn method_query_exec(args: Vec<BtValue>) -> BtResult<BtValue> {
     expect_arg_count(&args, 1, "SqliteQuery.exec")?;
-    let query = query_state(&args)?;
-    let db_object = ExtObject::new(DB_TYPE_ID, query.db_id, DB_TYPE_NAME);
-    with_db_mut(&db_object, |db| run_query_exec(db, &query))
+    with_query(&args, |query| {
+        with_db_mut(query.db_id, |db| run_query_exec(db, query))
+    })
 }
 
 /// Returns the SQL debug text for a chained query.
 fn method_query_sql(args: Vec<BtValue>) -> BtResult<BtValue> {
     expect_arg_count(&args, 1, "SqliteQuery.sql")?;
-    let query = query_state(&args)?;
-    Ok(BtValue::String(sql_text(&query)))
+    with_query(&args, |query| Ok(BtValue::String(sql_text(query))))
 }
 
 /// Closes a chained query object.
@@ -506,21 +474,21 @@ fn run_query_exec(db: &mut DbState, query: &QueryState) -> BtResult<BtValue> {
     if query.bind_rows.is_empty() {
         return run_exec(db, &query.sql, &query.params);
     }
-    let rows = materialize_bind_rows(query);
-    let total = rows.len();
-    let workers = normalized_workers(query.workers);
-    if total == 0 {
-        return exec_result(0, 0, 0, 0, query.batch_size, workers);
-    }
-
-    let batch_count = batch_count(total, batch_unit_size(total, query.batch_size));
+    let total = query.bind_rows.len();
+    let batch_count = if query.batch_size == 0 {
+        1
+    } else {
+        total.div_ceil(query.batch_size)
+    };
     let tx = db.conn.transaction().map_err(sqlite_error)?;
     let mut rows_affected = 0u64;
     {
         let mut statement = tx.prepare(&query.sql).map_err(sqlite_error)?;
-        for row in &rows {
+        // Borrow the common prefix and each row directly; large BLOBs must not be
+        // copied into a second batch before executing the transaction.
+        for row in &query.bind_rows {
             let changed = statement
-                .execute(params_from_iter(row.iter()))
+                .execute(params_from_iter(query.params.iter().chain(row.iter())))
                 .map_err(sqlite_error)?;
             rows_affected = rows_affected.saturating_add(changed as u64);
         }
@@ -533,7 +501,7 @@ fn run_query_exec(db: &mut DbState, query: &QueryState) -> BtResult<BtValue> {
         db.conn.last_insert_rowid(),
         batch_count,
         query.batch_size,
-        workers,
+        query.workers,
     )
 }
 
@@ -562,30 +530,27 @@ fn query_receiver(args: &[BtValue], name: &str) -> BtResult<ExtObject> {
     expect_ext_object_type(args, 0, name, QUERY_TYPE_ID, QUERY_TYPE_NAME)
 }
 
-/// Reads a snapshot of the chained query state.
-fn query_state(args: &[BtValue]) -> BtResult<QueryState> {
+/// Borrows query state for synchronous work without cloning SQL or bound values.
+fn with_query<T>(args: &[BtValue], body: impl FnOnce(&QueryState) -> BtResult<T>) -> BtResult<T> {
     let object = query_receiver(args, "self")?;
     QUERIES.with(|queries| {
-        queries
-            .borrow()
-            .get_required(object.object_id, QUERY_TYPE_NAME)
-            .cloned()
+        let queries = queries.borrow();
+        let query = queries.get_required(object.object_id, QUERY_TYPE_NAME)?;
+        // Execution only borrows DATABASES and STATS, with no callbacks into BT.
+        body(query)
     })
 }
 
 /// Mutably accesses a SQLite connection in the connection table.
-fn with_db_mut<T>(
-    object: &ExtObject,
-    body: impl FnOnce(&mut DbState) -> BtResult<T>,
-) -> BtResult<T> {
+fn with_db_mut<T>(object_id: u64, body: impl FnOnce(&mut DbState) -> BtResult<T>) -> BtResult<T> {
     DATABASES.with(|databases| {
         let mut databases = databases.borrow_mut();
-        let db = databases.get_mut_required(object.object_id, DB_TYPE_NAME)?;
+        let db = databases.get_mut_required(object_id, DB_TYPE_NAME)?;
         body(db)
     })
 }
 
-/// Parses sqlite_open options.
+/// Parses connection options shared by both public entry points.
 fn parse_options(value: Option<&BtValue>, name: &str) -> BtResult<DbOptions> {
     let Some(value) = value else {
         return Ok(DbOptions::default());
@@ -691,11 +656,6 @@ fn workers_arg(value: Option<&BtValue>, name: &str) -> BtResult<usize> {
     Ok((*value).clamp(DEFAULT_SQLITE_WORKERS as i64, MAX_SQLITE_WORKERS as i64) as usize)
 }
 
-/// Returns the worker count actually used by SQLite.
-fn normalized_workers(workers: usize) -> usize {
-    workers.clamp(DEFAULT_SQLITE_WORKERS, MAX_SQLITE_WORKERS)
-}
-
 /// Validates that SQL has been set on the query object.
 fn validate_query_sql(query: &QueryState, method: &str) -> BtResult<()> {
     if query.sql.trim().is_empty() {
@@ -713,68 +673,33 @@ fn validate_query_read_method(query: &QueryState, method: &str) -> BtResult<()> 
     if query.batch_size > 0 {
         return Err(format!("sqlite.{}() does not support batch()", method));
     }
-    if normalized_workers(query.workers) != DEFAULT_SQLITE_WORKERS {
+    if query.workers != DEFAULT_SQLITE_WORKERS {
         return Err(format!("sqlite.{}() does not support workers()", method));
     }
     Ok(())
 }
 
-/// Combines bind() prefix parameters with binds() row parameters into execution rows.
-fn materialize_bind_rows(query: &QueryState) -> Vec<Vec<SqlValue>> {
-    let mut rows = Vec::with_capacity(query.bind_rows.len());
-    for row in &query.bind_rows {
-        let mut values = Vec::with_capacity(query.params.len() + row.len());
-        values.extend(query.params.iter().cloned());
-        values.extend(row.iter().cloned());
-        rows.push(values);
-    }
-    rows
-}
-
-/// Returns the number of rows per batch under the current configuration.
-fn batch_unit_size(total: usize, batch_size: usize) -> usize {
-    if total == 0 {
-        return 0;
-    }
-    if batch_size > 0 {
-        batch_size.min(total).max(1)
-    } else {
-        total
-    }
-}
-
-/// Returns the number of batches.
-fn batch_count(total: usize, batch_unit_size: usize) -> usize {
-    if total == 0 || batch_unit_size == 0 {
-        0
-    } else {
-        (total - 1) / batch_unit_size + 1
-    }
-}
-
-/// Returns SQL debug text.
+/// Previews only the first execution row, borrowing its bound values.
 fn sql_text(query: &QueryState) -> String {
-    if query.bind_rows.is_empty() {
-        return format_sql_with_binds(&query.sql, &query.params);
-    }
-    let rows = materialize_bind_rows(query);
-    if rows.is_empty() {
-        return query.sql.clone();
-    }
-    let mut sql = format_sql_with_binds(&query.sql, &rows[0]);
+    let Some(first_row) = query.bind_rows.first() else {
+        return format_sql_with_binds(&query.sql, query.params.iter());
+    };
+    let mut sql = format_sql_with_binds(&query.sql, query.params.iter().chain(first_row.iter()));
     sql.push_str(&format!(
         " /* binds: {} rows, batch: {}, workers: {} */",
-        rows.len(),
+        query.bind_rows.len(),
         query.batch_size,
-        normalized_workers(query.workers)
+        query.workers
     ));
     sql
 }
 
 /// Replaces `?` placeholders outside SQL string literals with bound values.
-fn format_sql_with_binds(sql: &str, binds: &[SqlValue]) -> String {
-    let mut output = String::with_capacity(sql.len().saturating_add(binds.len() * 8));
-    let mut bind_index = 0usize;
+fn format_sql_with_binds<'a>(sql: &str, mut binds: impl Iterator<Item = &'a SqlValue>) -> String {
+    let mut output = String::with_capacity(
+        sql.len()
+            .saturating_add(binds.size_hint().0.saturating_mul(8)),
+    );
     let mut in_single = false;
     let mut in_double = false;
 
@@ -799,9 +724,8 @@ fn format_sql_with_binds(sql: &str, binds: &[SqlValue]) -> String {
                 output.push(ch);
             }
             '?' => {
-                if let Some(value) = binds.get(bind_index) {
+                if let Some(value) = binds.next() {
                     output.push_str(&sql_literal(value));
-                    bind_index += 1;
                 } else {
                     output.push('?');
                 }
@@ -810,8 +734,9 @@ fn format_sql_with_binds(sql: &str, binds: &[SqlValue]) -> String {
         }
     }
 
-    if bind_index < binds.len() {
-        output.push_str(&format!(" /* extra binds: {} */", binds.len() - bind_index));
+    let extra_binds = binds.count();
+    if extra_binds > 0 {
+        output.push_str(&format!(" /* extra binds: {} */", extra_binds));
     }
     output
 }
@@ -992,7 +917,7 @@ fn exec_result(
     Ok(object_value(vec![
         ("total", usize_value(total)?),
         ("rows_affected", u64_value(rows_affected)?),
-        ("last_insert_id", i64_value(last_insert_id)),
+        ("last_insert_id", BtValue::Int(last_insert_id)),
         ("batch_count", usize_value(batch_count)?),
         ("batch_size", usize_value(batch_size)?),
         ("workers", usize_value(workers)?),
@@ -1003,11 +928,6 @@ fn exec_result(
 fn usize_value(value: usize) -> BtResult<BtValue> {
     let value = i64::try_from(value).map_err(|_| "usize exceeds the BT int limit".to_string())?;
     Ok(BtValue::Int(value))
-}
-
-/// Converts an i64 to a BT int.
-fn i64_value(value: i64) -> BtValue {
-    BtValue::Int(value)
 }
 
 /// Converts a u64 to a BT int.
@@ -1050,459 +970,4 @@ fn sqlite_error(err: rusqlite::Error) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::thread;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    /// Creates a test database path.
-    fn test_path(name: &str) -> String {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "bt_sqlite_{}_{}_{}.db",
-            name,
-            std::process::id(),
-            now
-        ));
-        path.to_string_lossy().replace('\\', "/")
-    }
-
-    /// Removes the test database and its WAL sidecar files.
-    fn cleanup_path(path: &str) {
-        let _ = fs::remove_file(path);
-        let _ = fs::remove_file(format!("{path}-wal"));
-        let _ = fs::remove_file(format!("{path}-shm"));
-    }
-
-    /// Creates a BT object.
-    fn object(fields: Vec<(&str, BtValue)>) -> BtValue {
-        object_value(fields)
-    }
-
-    /// Creates a BT array.
-    fn array(values: Vec<BtValue>) -> BtValue {
-        BtValue::Array(values)
-    }
-
-    /// Opens a test database.
-    fn open_db(path: &str, options: BtValue) -> ExtObject {
-        let value = entry_open(vec![BtValue::String(path.to_string()), options]).unwrap();
-        let BtValue::ExtObject(object) = value else {
-            panic!("sqlite_open should return a Sqlite object");
-        };
-        object
-    }
-
-    /// Executes Sqlite.exec.
-    fn exec(db: &ExtObject, sql: &str, params: Vec<BtValue>) -> BtValue {
-        method_db_exec(vec![
-            BtValue::ExtObject(db.clone()),
-            BtValue::String(sql.to_string()),
-            array(params),
-        ])
-        .unwrap()
-    }
-
-    /// Executes Sqlite.one.
-    fn one(db: &ExtObject, sql: &str, params: Vec<BtValue>) -> BtValue {
-        method_db_one(vec![
-            BtValue::ExtObject(db.clone()),
-            BtValue::String(sql.to_string()),
-            array(params),
-        ])
-        .unwrap()
-    }
-
-    /// Executes Sqlite.all.
-    fn all(db: &ExtObject, sql: &str, params: Vec<BtValue>) -> BtValue {
-        method_db_all(vec![
-            BtValue::ExtObject(db.clone()),
-            BtValue::String(sql.to_string()),
-            array(params),
-        ])
-        .unwrap()
-    }
-
-    /// Closes a test database.
-    fn close_db(db: &ExtObject) {
-        method_db_close(vec![BtValue::ExtObject(db.clone())]).unwrap();
-    }
-
-    /// one() should preserve empty, NULL, and BLOB boundaries.
-    #[test]
-    fn one_preserves_empty_null_and_blob() {
-        reset_state();
-        let path = test_path("types");
-        cleanup_path(&path);
-        let db = open_db(&path, object(vec![("max_rows", BtValue::Int(10))]));
-        exec(
-            &db,
-            "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, payload BLOB, note TEXT)",
-            vec![],
-        );
-        exec(
-            &db,
-            "INSERT INTO items (name, payload, note) VALUES (?, ?, ?)",
-            vec![
-                BtValue::String("Alice".to_string()),
-                BtValue::Bytes(vec![0x42, 0x54]),
-                BtValue::Null,
-            ],
-        );
-
-        let row = one(
-            &db,
-            "SELECT name, payload, note FROM items WHERE name = ?",
-            vec![BtValue::String("Alice".to_string())],
-        );
-        let BtValue::Object(fields) = row else {
-            panic!("one should return an object");
-        };
-        assert_eq!(
-            object_field(&fields, "name"),
-            Some(&BtValue::String("Alice".to_string()))
-        );
-        assert_eq!(
-            object_field(&fields, "payload"),
-            Some(&BtValue::Bytes(vec![0x42, 0x54]))
-        );
-        assert_eq!(object_field(&fields, "note"), Some(&BtValue::Null));
-
-        let missing = one(
-            &db,
-            "SELECT name FROM items WHERE name = ?",
-            vec![BtValue::String("Missing".to_string())],
-        );
-        assert_eq!(missing, BtValue::Empty);
-        close_db(&db);
-        cleanup_path(&path);
-    }
-
-    /// all() must enforce maximum row and result-size limits.
-    #[test]
-    fn all_enforces_rows_and_bytes_limits() {
-        reset_state();
-        let path = test_path("limits");
-        cleanup_path(&path);
-        let db = open_db(
-            &path,
-            object(vec![
-                ("max_rows", BtValue::Int(1)),
-                ("max_result_bytes", BtValue::Int(12)),
-            ]),
-        );
-        exec(&db, "CREATE TABLE items (name TEXT)", vec![]);
-        exec(
-            &db,
-            "INSERT INTO items (name) VALUES (?)",
-            vec![BtValue::String("Alice".to_string())],
-        );
-        exec(
-            &db,
-            "INSERT INTO items (name) VALUES (?)",
-            vec![BtValue::String("Bob".to_string())],
-        );
-
-        let row_err = method_db_all(vec![
-            BtValue::ExtObject(db.clone()),
-            BtValue::String("SELECT name FROM items ORDER BY name".to_string()),
-            array(vec![]),
-        ])
-        .unwrap_err();
-        assert!(row_err.contains("max_rows"));
-
-        let bytes_err = method_db_one(vec![
-            BtValue::ExtObject(db.clone()),
-            BtValue::String("SELECT 'abcdefghijklmnopqrstuvwxyz' AS name".to_string()),
-            array(vec![]),
-        ])
-        .unwrap_err();
-        assert!(bytes_err.contains("max_result_bytes"));
-        close_db(&db);
-        cleanup_path(&path);
-    }
-
-    /// transaction() should execute multiple write statements serially.
-    #[test]
-    fn transaction_executes_multiple_statements() {
-        reset_state();
-        let path = test_path("transaction");
-        cleanup_path(&path);
-        let db = open_db(&path, object(vec![]));
-        exec(&db, "CREATE TABLE items (name TEXT)", vec![]);
-        let changed = method_db_transaction(vec![
-            BtValue::ExtObject(db.clone()),
-            array(vec![
-                object(vec![
-                    (
-                        "sql",
-                        BtValue::String("INSERT INTO items (name) VALUES (?)".to_string()),
-                    ),
-                    ("params", array(vec![BtValue::String("Alice".to_string())])),
-                ]),
-                object(vec![
-                    (
-                        "sql",
-                        BtValue::String("INSERT INTO items (name) VALUES (?)".to_string()),
-                    ),
-                    ("params", array(vec![BtValue::String("Bob".to_string())])),
-                ]),
-            ]),
-        ])
-        .unwrap();
-        assert_eq!(changed, BtValue::Int(2));
-        let rows = all(&db, "SELECT name FROM items ORDER BY name", vec![]);
-        let BtValue::Array(rows) = rows else {
-            panic!("all should return an array");
-        };
-        assert_eq!(rows.len(), 2);
-        close_db(&db);
-        cleanup_path(&path);
-    }
-
-    /// The query().bind() convenience layer should reuse the coarse-grained execution path.
-    #[test]
-    fn query_bind_chain_runs_queries() {
-        reset_state();
-        let path = test_path("query");
-        cleanup_path(&path);
-        let db = open_db(&path, object(vec![]));
-        exec(
-            &db,
-            "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)",
-            vec![],
-        );
-        exec(
-            &db,
-            "INSERT INTO items (name) VALUES (?)",
-            vec![BtValue::String("Bob".to_string())],
-        );
-        let query = method_db_query(vec![
-            BtValue::ExtObject(db.clone()),
-            BtValue::String("SELECT name FROM items WHERE id = ?".to_string()),
-        ])
-        .unwrap();
-        let BtValue::ExtObject(query) = query else {
-            panic!("query should return a SqliteQuery object");
-        };
-        method_query_bind(vec![BtValue::ExtObject(query.clone()), BtValue::Int(1)]).unwrap();
-        let row = method_query_one(vec![BtValue::ExtObject(query.clone())]).unwrap();
-        let BtValue::Object(fields) = row else {
-            panic!("query.one should return an object");
-        };
-        assert_eq!(
-            object_field(&fields, "name"),
-            Some(&BtValue::String("Bob".to_string()))
-        );
-        method_query_close(vec![BtValue::ExtObject(query.clone())]).unwrap();
-        let err = method_query_one(vec![BtValue::ExtObject(query)]).unwrap_err();
-        assert!(err.contains("is no longer valid"));
-        close_db(&db);
-        cleanup_path(&path);
-    }
-
-    /// query().binds().batch().workers().exec() should return a MySQL-style statistics object.
-    #[test]
-    fn query_batch_exec_returns_stats_object() {
-        reset_state();
-        let path = test_path("batch");
-        cleanup_path(&path);
-        let db = open_db(&path, object(vec![]));
-        exec(
-            &db,
-            "CREATE TABLE items (id INTEGER PRIMARY KEY, group_name TEXT, name TEXT)",
-            vec![],
-        );
-        let query = method_db_query(vec![
-            BtValue::ExtObject(db.clone()),
-            BtValue::String("INSERT INTO items (group_name, name) VALUES (?, ?)".to_string()),
-        ])
-        .unwrap();
-        let BtValue::ExtObject(query) = query else {
-            panic!("query should return a SqliteQuery object");
-        };
-        method_query_bind(vec![
-            BtValue::ExtObject(query.clone()),
-            BtValue::String("writer".to_string()),
-        ])
-        .unwrap();
-        method_query_binds(vec![
-            BtValue::ExtObject(query.clone()),
-            array(vec![
-                array(vec![BtValue::String("Alice".to_string())]),
-                array(vec![BtValue::String("Bob".to_string())]),
-            ]),
-        ])
-        .unwrap();
-        method_query_batch(vec![BtValue::ExtObject(query.clone()), BtValue::Int(1)]).unwrap();
-        method_query_workers(vec![BtValue::ExtObject(query.clone()), BtValue::Int(4)]).unwrap();
-
-        let preview = method_query_sql(vec![BtValue::ExtObject(query.clone())]).unwrap();
-        assert_eq!(
-            preview,
-            BtValue::String(
-                "INSERT INTO items (group_name, name) VALUES ('writer', 'Alice') /* binds: 2 rows, batch: 1, workers: 4 */"
-                    .to_string()
-            )
-        );
-
-        let result = method_query_exec(vec![BtValue::ExtObject(query.clone())]).unwrap();
-        let BtValue::Object(fields) = result else {
-            panic!("exec should return an object");
-        };
-        assert_eq!(object_field(&fields, "total"), Some(&BtValue::Int(2)));
-        assert_eq!(
-            object_field(&fields, "rows_affected"),
-            Some(&BtValue::Int(2))
-        );
-        assert_eq!(object_field(&fields, "batch_count"), Some(&BtValue::Int(2)));
-        assert_eq!(object_field(&fields, "batch_size"), Some(&BtValue::Int(1)));
-        assert_eq!(object_field(&fields, "workers"), Some(&BtValue::Int(4)));
-
-        let rows = all(&db, "SELECT name FROM items ORDER BY id", vec![]);
-        let BtValue::Array(rows) = rows else {
-            panic!("all should return an array");
-        };
-        assert_eq!(rows.len(), 2);
-        method_query_close(vec![BtValue::ExtObject(query)]).unwrap();
-        close_db(&db);
-        cleanup_path(&path);
-    }
-
-    /// An old connection handle should become invalid after close().
-    #[test]
-    fn close_invalidates_database_handle() {
-        reset_state();
-        let path = test_path("close");
-        cleanup_path(&path);
-        let db = open_db(&path, object(vec![]));
-        close_db(&db);
-        let err = method_db_exec(vec![
-            BtValue::ExtObject(db),
-            BtValue::String("SELECT 1".to_string()),
-            array(vec![]),
-        ])
-        .unwrap_err();
-        assert!(err.contains("is no longer valid"));
-        cleanup_path(&path);
-    }
-
-    /// WAL mode should be explicitly configurable through options.
-    #[test]
-    fn wal_mode_can_be_enabled() {
-        reset_state();
-        let path = test_path("wal");
-        cleanup_path(&path);
-        let db = open_db(&path, object(vec![("wal", BtValue::Bool(true))]));
-        let row = one(&db, "PRAGMA journal_mode", vec![]);
-        let BtValue::Object(fields) = row else {
-            panic!("PRAGMA journal_mode should return an object");
-        };
-        let mode = object_field(&fields, "journal_mode")
-            .and_then(BtValue::as_str)
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        assert_eq!(mode, "wal");
-        close_db(&db);
-        cleanup_path(&path);
-    }
-
-    /// Concurrent readers should open independent connections in worker-like threads.
-    #[test]
-    fn concurrent_readers_can_read_same_database() {
-        reset_state();
-        let path = test_path("readers");
-        cleanup_path(&path);
-        let db = open_db(&path, object(vec![("wal", BtValue::Bool(true))]));
-        exec(&db, "CREATE TABLE items (name TEXT)", vec![]);
-        exec(
-            &db,
-            "INSERT INTO items (name) VALUES ('a'), ('b'), ('c')",
-            vec![],
-        );
-        close_db(&db);
-
-        let mut handles = Vec::new();
-        for _ in 0..4 {
-            let path = path.clone();
-            handles.push(thread::spawn(move || {
-                reset_state();
-                let db = open_db(&path, object(vec![("wal", BtValue::Bool(true))]));
-                let rows = all(&db, "SELECT name FROM items ORDER BY name", vec![]);
-                close_db(&db);
-                let BtValue::Array(rows) = rows else {
-                    panic!("all should return an array");
-                };
-                rows.len()
-            }));
-        }
-
-        for handle in handles {
-            assert_eq!(handle.join().unwrap(), 3);
-        }
-        cleanup_path(&path);
-    }
-
-    /// An expired busy_timeout should return a SQLite lock error, and writes should recover after unlocking.
-    #[test]
-    fn busy_timeout_rejects_locked_write_then_recovers() {
-        reset_state();
-        let path = test_path("busy");
-        cleanup_path(&path);
-        let db = open_db(&path, object(vec![("busy_timeout_ms", BtValue::Int(20))]));
-        exec(&db, "CREATE TABLE items (name TEXT)", vec![]);
-        close_db(&db);
-
-        let locker = Connection::open(&path).unwrap();
-        locker
-            .execute_batch("BEGIN EXCLUSIVE; INSERT INTO items (name) VALUES ('locked');")
-            .unwrap();
-        let db = open_db(&path, object(vec![("busy_timeout_ms", BtValue::Int(20))]));
-        let err = method_db_exec(vec![
-            BtValue::ExtObject(db.clone()),
-            BtValue::String("INSERT INTO items (name) VALUES (?)".to_string()),
-            array(vec![BtValue::String("blocked".to_string())]),
-        ])
-        .unwrap_err();
-        assert!(err.contains("locked"));
-        locker.execute_batch("ROLLBACK;").unwrap();
-        exec(
-            &db,
-            "INSERT INTO items (name) VALUES (?)",
-            vec![BtValue::String("ok".to_string())],
-        );
-        close_db(&db);
-        cleanup_path(&path);
-    }
-
-    /// Connection objects should not keep growing after repeated open-close cycles.
-    #[test]
-    fn repeated_open_close_does_not_grow_objects() {
-        reset_state();
-        let path = test_path("steady");
-        cleanup_path(&path);
-        lifecycle_init(BtValue::Object(vec![])).unwrap();
-        for _ in 0..50 {
-            let db = open_db(&path, object(vec![]));
-            close_db(&db);
-        }
-        let stats = lifecycle_stats().unwrap();
-        let BtValue::Object(fields) = stats else {
-            panic!("stats should return an object");
-        };
-        assert_eq!(
-            object_field(&fields, "active_connections"),
-            Some(&BtValue::Int(0))
-        );
-        assert_eq!(
-            object_field(&fields, "query_objects"),
-            Some(&BtValue::Int(0))
-        );
-        assert_eq!(object_field(&fields, "init_calls"), Some(&BtValue::Int(1)));
-        cleanup_path(&path);
-    }
-}
+mod tests;

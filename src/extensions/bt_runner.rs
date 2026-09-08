@@ -465,7 +465,7 @@ fn validate_primitive_return(returns: &str, value: &Value) -> Result<(), String>
         "float" => matches!(value, Value::Float(_)),
         "string" => matches!(value, Value::Str(_)),
         "bytes" => matches!(value, Value::Bytes(_)),
-        "array" => matches!(value, Value::Array(_)),
+        "array" => matches!(value, Value::Array(_) | Value::Empty),
         "object" => matches!(value, Value::Object(_) | Value::Instance(_) | Value::Empty),
         _ => false,
     };
@@ -550,6 +550,13 @@ fn evict_runtime_cache_if_needed(cache: &mut HashMap<BtRunnerCacheKey, BtRunnerR
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Collection lookups preserve absence while rejecting an explicit null array.
+    #[test]
+    fn array_return_accepts_empty_but_rejects_null() {
+        assert!(validate_primitive_return("array", &Value::Empty).is_ok());
+        assert!(validate_primitive_return("array", &Value::Null).is_err());
+    }
     use crate::extensions::bindings::ExtensionBindings;
     use crate::extensions::manifest::ExtensionManifest;
     use crate::extensions::package::PackageFileEntry;

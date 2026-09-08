@@ -1,0 +1,101 @@
+// Run in an independent BT project after installing image-1.0.0.bts.
+// Every fixture is generated locally; no third-party media is required.
+// Construction and close work without a file; create bypasses malformed contents.
+unloaded = image('never-written.png')
+unloaded.close()
+fs('malformed-source.png').write('not an image')
+fresh = image('malformed-source.png').create(3, 2, [1, 2, 3, 4])
+assert(fresh.pixel(0, 0)[3] == 4, 'create bypasses malformed source')
+assert(fs('malformed-source.png').read() == 'not an image', 'create never overwrites')
+fresh.close()
+
+img = image('canvas.png').create(80, 48, [10, 20, 30, 128])
+assert(img.info().width == 80, 'create width')
+assert(img.info().height == 48, 'create height')
+assert(img.info().pixel_bytes == 15360, 'RGBA accounting')
+assert(img.pixel(0, 0)[3] == 128, 'create alpha')
+assert(is_empty(img.pixel(-1, 0)), 'missing pixel is empty')
+
+for format in ['png', 'webp', 'bmp'] {
+    encoded = img.encode(format, {})
+    assert(type(encoded) == 'Bytes', 'binary result')
+    copy = image('decoded.png').decode(encoded)
+    assert(copy.info().width == 80, 'lossless width')
+    assert(copy.pixel(0, 0)[0] == 10, 'lossless red')
+    assert(copy.pixel(0, 0)[3] == 128, 'lossless alpha')
+    copy.save('roundtrip.' + format, format, {})
+    copy.close()
+    disk = image('roundtrip.' + format)
+    assert(disk.pixel(0, 0)[3] == 128, 'file alpha')
+    fs('roundtrip.' + format).delete()
+    assert(disk.info().width == 80, 'lazy pixels reused after source removal')
+    disk.close()
+}
+
+transparent = image('canvas.png').create(32, 32, [255, 0, 0, 0])
+transparent.save('matte.jpg', 'jpeg', {quality: 100, background: [0, 0, 255, 255]})
+jpeg = image('matte.jpg')
+assert(jpeg.pixel(0, 0)[2] >= 253, 'JPEG matte blue')
+assert(jpeg.pixel(0, 0)[0] <= 2, 'JPEG removes hidden red')
+assert(jpeg.pixel(0, 0)[3] == 255, 'JPEG opaque')
+jpeg.close()
+transparent.close()
+
+for compression in ['fast', 'default', 'best'] {
+    img.save('compression-' + compression + '.png', 'png', {compression: compression})
+}
+
+img.crop(8, 4, 40, 24).rotate(90)
+assert(img.info().width == 24, 'rotate width')
+assert(img.info().height == 40, 'rotate height')
+img.rotate(180).rotate(270)
+assert(img.info().width == 40, 'rotation sequence width')
+for filter in ['nearest', 'triangle', 'catmull_rom', 'gaussian', 'lanczos3'] {
+    img.resize(64, 32, filter)
+    assert(img.info().width == 64, 'resize width')
+    assert(img.info().height == 32, 'resize height')
+}
+
+mark = image('canvas.png').create(4, 4, [255, 0, 0, 255])
+mark.save('mark.png', 'png', {})
+mark_data = mark.encode('png', {})
+mark.close()
+base = image('canvas.png').create(40, 24, [0, 0, 255, 255])
+base.watermark('mark.png', -1, -1, 0.5)
+assert(base.pixel(0, 0)[0] == 128, 'path watermark red')
+assert(base.pixel(0, 0)[2] == 128, 'path watermark blue')
+base.watermark_bytes(mark_data, 4, 4, 1.0)
+assert(base.pixel(4, 4)[0] == 255, 'Bytes watermark')
+base.text('BT\n1.0', 8, 0, 1, [255, 255, 255, 200])
+base.save('watermarked.png', 'png', {})
+base.close()
+
+adjusted = image('canvas.png').create(8, 8, [30, 60, 90, 123])
+adjusted.adjust({brightness: 10})
+assert(adjusted.pixel(0, 0)[0] == 40, 'brightness')
+adjusted.adjust({invert: true})
+assert(adjusted.pixel(0, 0)[0] == 215, 'invert')
+adjusted.adjust({contrast: 1.2, saturation: 0.5, gamma: 2, grayscale: true})
+assert(adjusted.pixel(0, 0)[0] == adjusted.pixel(0, 0)[1], 'grayscale')
+assert(adjusted.pixel(0, 0)[1] == adjusted.pixel(0, 0)[2], 'grayscale blue')
+assert(adjusted.pixel(0, 0)[3] == 123, 'adjust alpha preserved')
+adjusted.save('adjusted.png', 'png', {})
+
+// Replacement retains this object's identity and makes old pixel allocations reusable.
+replacement_data = adjusted.encode('png', {})
+for _ in 128 {
+    adjusted.create(2, 3, [1, 2, 3, 4]).decode(replacement_data)
+    assert(adjusted.info().width == 8, 'same object after create and decode')
+}
+
+// Repeated chaining must preserve host handle identity and release accounting.
+for _ in 1000 {
+    adjusted.adjust({})
+}
+adjusted.close()
+for _ in 64 {
+    short_lived = image('canvas.png').create(4, 4, [0, 0, 0, 0])
+    short_lived.close()
+}
+img.close()
+print 'image-smoke:ok; formats=4; transforms=all; alpha=ok; chain_calls=1000; replacements=256; lazy=ok; released=all'

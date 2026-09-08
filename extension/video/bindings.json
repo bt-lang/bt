@@ -1,0 +1,26 @@
+{
+  "api_version":1,
+  "functions":[
+    {"name":"video","id":1,"params":[{"name":"path","type":"string","role":"path_read"},{"name":"options","type":"object"}],"returns":"Video"}
+  ],
+  "objects":[
+    {"name":"Video","type_id":1,"methods":[
+      {"name":"job","id":15,"params":[{"name":"id","type":"int"}],"returns":"VideoJob"},
+      {"name":"info","id":2,"params":[],"returns":"VideoJob"},
+      {"name":"transcode","id":3,"params":[{"name":"output","type":"string","role":"path_write"},{"name":"options","type":"object"}],"returns":"VideoJob"},
+      {"name":"trim","id":4,"params":[{"name":"output","type":"string","role":"path_write"},{"name":"start","type":"float"},{"name":"duration","type":"float"},{"name":"options","type":"object"}],"returns":"VideoJob"},
+      {"name":"concat","id":5,"params":[{"name":"paths","type":"array"},{"name":"output","type":"string","role":"path_write"},{"name":"options","type":"object"}],"returns":"VideoJob"},
+      {"name":"frame","id":6,"params":[{"name":"output","type":"string","role":"path_write"},{"name":"time","type":"float"}],"returns":"VideoJob"},
+      {"name":"resize","id":7,"params":[{"name":"output","type":"string","role":"path_write"},{"name":"width","type":"int"},{"name":"height","type":"int"},{"name":"options","type":"object"}],"returns":"VideoJob"},
+      {"name":"extract_audio","id":8,"params":[{"name":"output","type":"string","role":"path_write"}],"returns":"VideoJob"},
+      {"name":"replace_audio","id":9,"params":[{"name":"audio","type":"string","role":"path_read"},{"name":"output","type":"string","role":"path_write"},{"name":"options","type":"object"}],"returns":"VideoJob"},
+      {"name":"close","id":10,"params":[],"returns":"bool","lifecycle":"dispose"}
+    ]},
+    {"name":"VideoJob","type_id":2,"methods":[
+      {"name":"status","id":11,"params":[],"returns":"object"},
+      {"name":"cancel","id":12,"params":[],"returns":"object"},
+      {"name":"close","id":13,"params":[],"returns":"bool","lifecycle":"dispose"},
+      {"name":"id","id":14,"params":[],"returns":"int"}
+    ]}
+  ]
+}

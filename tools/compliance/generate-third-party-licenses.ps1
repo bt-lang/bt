@@ -13,7 +13,7 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $CargoAboutVersion = "0.9.2"
-$SqliteRoot = Join-Path $RepoRoot "examples\extension-development\sqlite"
+$SqliteRoot = Join-Path $RepoRoot "extension\sqlite"
 $SqliteOutput = Join-Path $SqliteRoot "THIRD_PARTY_LICENSES.txt"
 $ConfigPath = Join-Path $RepoRoot "about.toml"
 $TemplatePath = Join-Path $PSScriptRoot "about.hbs"
@@ -72,6 +72,10 @@ function Convert-ToLf {
     return $normalized.TrimEnd([char[]]"`n") + "`n"
 }
 
+<#
+.SYNOPSIS
+Checks distributed assets present in the working tree against the license inventory.
+#>
 function Assert-DistributionInventory {
     $distribution = Get-Content -Raw -Encoding UTF8 $DistributionPath | ConvertFrom-Json
     if ($distribution.schema_version -ne 1) {
@@ -80,7 +84,10 @@ function Assert-DistributionInventory {
 
     Push-Location $RepoRoot
     try {
-        $tracked = @(git ls-files)
+        # Include new source files and honor local deletions before they are staged.
+        $tracked = @(git ls-files --cached --others --exclude-standard | Where-Object {
+            Test-Path -LiteralPath (Join-Path $RepoRoot $_) -PathType Leaf
+        })
         if ($LASTEXITCODE -ne 0) {
             throw "Unable to enumerate tracked files."
         }
@@ -621,8 +628,36 @@ $sqliteCargo
     Remove-Item -LiteralPath $sqliteTemp -Force -ErrorAction SilentlyContinue
 }
 
+foreach ($extensionName in @("image", "video")) {
+    $extensionRoot = Join-Path $RepoRoot "extension\$extensionName"
+    $extensionTemp = [System.IO.Path]::GetTempFileName()
+    try {
+        Invoke-CargoAbout `
+            -ManifestPath (Join-Path $extensionRoot "Cargo.toml") `
+            -Target "wasm32-wasip1" `
+            -Destination $extensionTemp `
+            -AllFeatures
+        $extensionCargo = Get-Content -Raw -Encoding UTF8 $extensionTemp
+        $extensionNotice = @"
+BT $extensionName extension third-party licenses
+========================================
+
+Generated from the locked wasm32-wasip1 Cargo dependency graph using cargo-about
+$CargoAboutVersion. BT source is Copyright 2026 Lifeng Yan and licensed under
+MIT OR Apache-2.0; see LICENSE-MIT, LICENSE-APACHE, and COPYRIGHT.
+External executables installed separately by the user are not included in this
+extension package. Their own distributions retain their own license obligations.
+
+$extensionCargo
+"@
+        Write-OrCheckUtf8 -Path (Join-Path $extensionRoot "THIRD_PARTY_LICENSES.txt") -Content $extensionNotice
+    } finally {
+        Remove-Item -LiteralPath $extensionTemp -Force -ErrorAction SilentlyContinue
+    }
+}
+
 if ($Check) {
-    Write-Host "Tracked SQLite extension notices and the distribution inventory are current."
+    Write-Host "Official extension notices and the distribution inventory are current."
 } else {
-    Write-Host "Tracked SQLite extension notices generated."
+    Write-Host "Official extension notices generated."
 }

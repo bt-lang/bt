@@ -148,8 +148,7 @@ The catalog below covers every top-level entry in [`examples/`](examples/). Some
 | Example | Description |
 |---|---|
 | [`device-serial.bt`](examples/device-serial.bt) | Scans available serial ports through the device API. |
-| [`ext-install-demo/`](examples/ext-install-demo/) | Uses an installed SQLite extension to create, write, and query a local database. |
-| [`extension-development/`](examples/extension-development/) | Contains extension-development projects for BT, shared runtimes, and SQLite/WASM packaging. |
+| [`extension-development/`](examples/extension-development/) | Contains the shared WASM runtime timeout fixture. Official extension source is maintained in [`extension/`](extension/README.md). |
 | [`ffi-testlib/`](examples/ffi-testlib/) | Calls the cross-platform native test library with explicit FFI signatures and long-running checks. |
 | [`ffi-user32/`](examples/ffi-user32/) | Demonstrates Windows `user32.dll` calls with inferred and explicit FFI signatures. |
 
@@ -161,6 +160,7 @@ The catalog below covers every top-level entry in [`examples/`](examples/). Some
 | `src/` | Lexer, parser, compiler, bytecode VM, standard library, web runtime, desktop runtime, and bundle support. |
 | `src-tauri/` | Tauri configuration, permissions, capabilities, and the minimal compile-time frontend placeholder. |
 | `crates/` | The extension SDK and the native FFI test library used by the Cargo workspace. |
+| [`extension/`](extension/README.md) | Independently built official extension libraries, including SQLite source and regression tests. |
 | `src-tauri/icons/` | Compile-time icons embedded in `bt` and `bt-app`. |
 | `examples/` | Runnable language, extension, web, and desktop examples used by contributors and CI. |
 | `benches/` | Repeatable quality and performance workloads. |

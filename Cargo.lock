@@ -494,6 +494,7 @@ name = "bt"
 version = "1.1.4"
 dependencies = [
  "base64 0.22.1",
+ "bt-extension-sdk",
  "chrono",
  "console",
  "futures-util",
@@ -548,6 +549,11 @@ dependencies = [
 [[package]]
 name = "bt-extension-sdk"
 version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde_json",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "bt-ffi-testlib"

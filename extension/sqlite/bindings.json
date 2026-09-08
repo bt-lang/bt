@@ -2,6 +2,15 @@
     "api_version": 1,
     "functions": [
         {
+            "name": "sqlite",
+            "id": 17,
+            "params": [
+                { "name": "path", "type": "string", "role": "path_write" },
+                { "name": "options", "type": "object" }
+            ],
+            "returns": "Sqlite"
+        },
+        {
             "name": "sqlite_open",
             "id": 1,
             "params": [

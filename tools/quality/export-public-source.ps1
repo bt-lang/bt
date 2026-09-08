@@ -94,9 +94,23 @@ $requiredFiles = @(
     "LICENSE-MIT",
     "README.md",
     "SECURITY.md",
-    "examples/extension-development/extensions/sqlite.bts",
-    "examples/extension-development/sqlite/sqlite-1.0.0.bts"
+    "extension/sqlite/Cargo.lock",
+    "extension/sqlite/Cargo.toml",
+    "extension/sqlite/COPYRIGHT",
+    "extension/sqlite/LICENSE-APACHE",
+    "extension/sqlite/LICENSE-MIT",
+    "extension/sqlite/README.md",
+    "extension/sqlite/bindings.json",
+    "extension/sqlite/manifest.json",
+    "extension/sqlite/src/lib.rs",
+    "extension/sqlite/src/tests.rs",
+    "extension/sqlite/THIRD_PARTY_LICENSES.txt"
 )
+foreach ($extensionName in @("image", "video")) {
+    foreach ($extensionFile in @("Cargo.toml", "Cargo.lock", "manifest.json", "bindings.json", "README.md", "COPYRIGHT", "LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY_LICENSES.txt", "build.ps1", "verify.ps1", "smoke.bt", "src/lib.rs", "src/tests.rs")) {
+        $requiredFiles += "extension/$extensionName/$extensionFile"
+    }
+}
 foreach ($relativePath in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $DestinationPath $relativePath) -PathType Leaf)) {
         throw "The public export is missing required file: $relativePath"
@@ -112,9 +126,9 @@ if ($InitializeRepository) {
         }
 
         if ($CreateInitialCommit) {
-            # The export already contains only files tracked by the reviewed source commit. Force
-            # addition so historically tracked release packages remain present even when the
-            # public repository's ignore rules correctly ignore newly generated package files.
+            # The export contains only files tracked by the reviewed source commit.
+            # Preserve all reviewed files, including explicitly tracked assets that
+            # match ignore rules intended for newly generated files.
             git add --force --all
             if ($LASTEXITCODE -ne 0) {
                 throw "Unable to stage the public source tree."

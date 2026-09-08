@@ -940,6 +940,11 @@ impl WasmRunnerRuntime {
         })?;
         let mut wasi = WasiCtxBuilder::new();
         configure_wasi_preopens(module, &mut wasi)?;
+        crate::extensions::process_host::add_to_linker(
+            &mut linker,
+            &module.project_root,
+            module.permissions,
+        )?;
         let mut store = Store::new(&module.engine, wasi.build_p1());
         configure_epoch_timeout_callback(module, &mut store, timeout_abort.clone());
         let instance = linker
@@ -1511,9 +1516,6 @@ fn validate_wasm_permissions(
     if permissions.http {
         unsupported.push("http");
     }
-    if permissions.process {
-        unsupported.push("process");
-    }
     if permissions.env {
         unsupported.push("env");
     }
@@ -1854,7 +1856,7 @@ fn validate_primitive_return(
         "float" => matches!(value, Value::Float(_)),
         "string" => matches!(value, Value::Str(_)),
         "bytes" => matches!(value, Value::Bytes(_)),
-        "array" => matches!(value, Value::Array(_)),
+        "array" => matches!(value, Value::Array(_) | Value::Empty),
         "object" => matches!(value, Value::Object(_) | Value::Empty),
         _ => false,
     };
@@ -1911,6 +1913,13 @@ mod tests {
     use crate::extensions::package::{ExtensionPackage, PackageFileEntry};
     use crate::extensions::registry::RegisteredFunction;
     use crate::value::Value;
+
+    /// Collection lookups preserve absence without accepting explicit null as an array.
+    #[test]
+    fn array_return_accepts_empty_but_rejects_null() {
+        assert!(validate_primitive_return("image", "pixel", "array", &Value::Empty).is_ok());
+        assert!(validate_primitive_return("image", "pixel", "array", &Value::Null).is_err());
+    }
 
     /// Builds a WASM extension package for tests.
     fn make_module_id_package(wasm: Vec<u8>) -> ExtensionPackage {

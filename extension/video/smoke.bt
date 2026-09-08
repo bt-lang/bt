@@ -1,0 +1,87 @@
+// Run in an independent project after verify.ps1 creates the fixtures.
+finish = fn(job) {
+    state = job.status()
+    while state.state == 'probing' || state.state == 'running' {
+        sleep(25)
+        state = job.status()
+    }
+    assert(state.state == 'succeeded', state.error)
+    result = state.result
+    job.close()
+    result
+}
+
+clip = video('@/source.mp4', {timeout_ms: 60000})
+metadata = finish(clip.info())
+assert(metadata.duration == 2, 'source duration changed')
+assert(metadata.streams.len() == 2, 'source streams changed')
+finish(clip.transcode('@/transcoded.mp4', {quality: 4, fps: 30}))
+finish(clip.transcode('@/converted.webm', {}))
+finish(clip.trim('@/trimmed.mp4', 0.4, 0.8, {}))
+finish(clip.concat(['source.mp4'], '@/joined.mp4', {}))
+finish(clip.concat(['source.mp4'], '@/joined_silent.webm', {audio: false}))
+finish(clip.frame('@/frame.png', 0.5))
+finish(clip.frame('@/frame.jpg', 0.5))
+finish(clip.resize('@/small.mp4', 160, 90, {}))
+finish(clip.extract_audio('@/audio.wav'))
+finish(clip.extract_audio('@/audio.flac'))
+finish(clip.extract_audio('@/audio.m4a'))
+finish(clip.replace_audio('@/tone.wav', '@/replaced.mp4', {}))
+
+job = clip.resize('@/cancelled.mp4', 4096, 2160, {})
+job_id = job.id()
+// A later request can reopen the same source and restore its job.
+source = video('@/source.mp4', {})
+restored = source.job(job_id)
+source.close()
+state = restored.status()
+while state.state == 'probing' {
+    sleep(10)
+    state = restored.status()
+}
+assert(state.state == 'running', 'expected running job before cancellation')
+state = restored.cancel()
+assert(state.state == 'cancelled', 'cancel state changed')
+assert(is_empty(state.result), 'unfinished result must be empty')
+restored.close()
+
+// Unacknowledged completed output is discarded when its job is cancelled/closed.
+unpolled = clip.transcode('@/unpolled_cancel.mp4', {})
+state = unpolled.status()
+while state.state == 'probing' {
+    sleep(10)
+    state = unpolled.status()
+}
+sleep(2000)
+unpolled.cancel()
+unpolled.close()
+unpolled = clip.transcode('@/unpolled_close.mp4', {})
+state = unpolled.status()
+while state.state == 'probing' {
+    sleep(10)
+    state = unpolled.status()
+}
+sleep(2000)
+unpolled.close()
+
+bad = clip.trim('@/bad.mp4', 1.8, 1, {})
+state = bad.status()
+while state.state == 'probing' {
+    sleep(10)
+    state = bad.status()
+}
+assert(state.state == 'failed', 'invalid trim must fail')
+bad.close()
+
+short = video('@/source.mp4', {timeout_ms: 1})
+timed = short.info()
+sleep(25)
+assert(timed.status().state == 'timed_out', 'deadline did not expire')
+timed.close()
+short.close()
+for i in 36 {
+    finish(clip.info())
+}
+clip.close()
+print json({ok: true, duration: metadata.duration, operations: 12, lifecycle: 'cancel timeout restore dispose reuse'})
+print 'VIDEO_SMOKE_PASS'

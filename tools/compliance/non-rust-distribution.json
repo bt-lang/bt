@@ -14,14 +14,5 @@
     "src-tauri/icons/file.ico",
     "src-tauri/icons/icon.png"
   ],
-  "bundled_packages": [
-    {
-      "path": "examples/extension-development/extensions/sqlite.bts",
-      "notice": "examples/extension-development/sqlite/THIRD_PARTY_LICENSES.txt"
-    },
-    {
-      "path": "examples/extension-development/sqlite/sqlite-1.0.0.bts",
-      "notice": "examples/extension-development/sqlite/THIRD_PARTY_LICENSES.txt"
-    }
-  ]
+  "bundled_packages": []
 }

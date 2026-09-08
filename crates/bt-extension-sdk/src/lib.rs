@@ -10,6 +10,10 @@ use std::collections::{HashMap, HashSet};
 use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// Optional bounded host-process service for extensions that declare process access.
+#[cfg(feature = "host-process")]
+pub mod host_process;
+
 /// `empty` value tag.
 const TAG_EMPTY: u8 = 0x00;
 /// `null` value tag.
@@ -1209,6 +1213,9 @@ fn pack_ptr_len(ptr: *mut u8, len: usize) -> u64 {
 mod tests {
     use super::*;
 
+    /// Serialize tests that temporarily change the process-wide injected module ID.
+    static MODULE_ID_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     /// Create encoding limits for tests.
     fn limits() -> ValueCodecLimits {
         ValueCodecLimits::with_total_bytes(4096)
@@ -1280,6 +1287,7 @@ mod tests {
     /// A new object handle should use the injected module ID.
     #[test]
     fn ext_object_uses_current_module_id() {
+        let _guard = MODULE_ID_TEST_LOCK.lock().unwrap();
         set_current_module_id(12);
         let object = ExtObject::new(1, 7, "Calc");
         assert_eq!(object.module_id, 12);
@@ -1307,6 +1315,7 @@ mod tests {
     /// Extension-object argument validation should check module ID and object type.
     #[test]
     fn expect_ext_object_type_validates_receiver() {
+        let _guard = MODULE_ID_TEST_LOCK.lock().unwrap();
         set_current_module_id(8);
         let args = vec![BtValue::ExtObject(ExtObject::new(1, 9, "Calc"))];
         let object = expect_ext_object_type(&args, 0, "self", 1, "Calc").unwrap();

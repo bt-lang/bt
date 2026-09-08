@@ -1,0 +1,256 @@
+{
+  "api_version": 1,
+  "functions": [
+    {
+      "name": "image",
+      "params": [
+        {
+          "role": "path_write",
+          "name": "path",
+          "type": "string"
+        }
+      ],
+      "returns": "Image",
+      "id": 1
+    }
+  ],
+  "objects": [
+    {
+      "name": "Image",
+      "type_id": 1,
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            {
+              "name": "width",
+              "type": "int"
+            },
+            {
+              "name": "height",
+              "type": "int"
+            },
+            {
+              "name": "color",
+              "type": "array"
+            }
+          ],
+          "returns": "Image",
+          "id": 3
+        },
+        {
+          "name": "decode",
+          "params": [
+            {
+              "name": "data",
+              "type": "bytes"
+            }
+          ],
+          "returns": "Image",
+          "id": 2
+        },
+        {
+          "name": "info",
+          "id": 10,
+          "params": [],
+          "returns": "object"
+        },
+        {
+          "name": "resize",
+          "id": 11,
+          "params": [
+            {
+              "name": "width",
+              "type": "int"
+            },
+            {
+              "name": "height",
+              "type": "int"
+            },
+            {
+              "name": "filter",
+              "type": "string"
+            }
+          ],
+          "returns": "Image"
+        },
+        {
+          "name": "crop",
+          "id": 12,
+          "params": [
+            {
+              "name": "x",
+              "type": "int"
+            },
+            {
+              "name": "y",
+              "type": "int"
+            },
+            {
+              "name": "width",
+              "type": "int"
+            },
+            {
+              "name": "height",
+              "type": "int"
+            }
+          ],
+          "returns": "Image"
+        },
+        {
+          "name": "rotate",
+          "id": 13,
+          "params": [
+            {
+              "name": "degrees",
+              "type": "int"
+            }
+          ],
+          "returns": "Image"
+        },
+        {
+          "name": "watermark",
+          "id": 14,
+          "params": [
+            {
+              "name": "path",
+              "type": "string",
+              "role": "path_read"
+            },
+            {
+              "name": "x",
+              "type": "int"
+            },
+            {
+              "name": "y",
+              "type": "int"
+            },
+            {
+              "name": "opacity",
+              "type": "float"
+            }
+          ],
+          "returns": "Image"
+        },
+        {
+          "name": "watermark_bytes",
+          "id": 15,
+          "params": [
+            {
+              "name": "data",
+              "type": "bytes"
+            },
+            {
+              "name": "x",
+              "type": "int"
+            },
+            {
+              "name": "y",
+              "type": "int"
+            },
+            {
+              "name": "opacity",
+              "type": "float"
+            }
+          ],
+          "returns": "Image"
+        },
+        {
+          "name": "text",
+          "id": 16,
+          "params": [
+            {
+              "name": "text",
+              "type": "string"
+            },
+            {
+              "name": "x",
+              "type": "int"
+            },
+            {
+              "name": "y",
+              "type": "int"
+            },
+            {
+              "name": "scale",
+              "type": "int"
+            },
+            {
+              "name": "color",
+              "type": "array"
+            }
+          ],
+          "returns": "Image"
+        },
+        {
+          "name": "adjust",
+          "id": 17,
+          "params": [
+            {
+              "name": "options",
+              "type": "object"
+            }
+          ],
+          "returns": "Image"
+        },
+        {
+          "name": "save",
+          "id": 18,
+          "params": [
+            {
+              "name": "path",
+              "type": "string",
+              "role": "path_write"
+            },
+            {
+              "name": "format",
+              "type": "string"
+            },
+            {
+              "name": "options",
+              "type": "object"
+            }
+          ],
+          "returns": "Image"
+        },
+        {
+          "name": "encode",
+          "id": 19,
+          "params": [
+            {
+              "name": "format",
+              "type": "string"
+            },
+            {
+              "name": "options",
+              "type": "object"
+            }
+          ],
+          "returns": "bytes"
+        },
+        {
+          "name": "pixel",
+          "id": 20,
+          "params": [
+            {
+              "name": "x",
+              "type": "int"
+            },
+            {
+              "name": "y",
+              "type": "int"
+            }
+          ],
+          "returns": "array"
+        },
+        {
+          "name": "close",
+          "id": 21,
+          "params": [],
+          "returns": "bool",
+          "lifecycle": "dispose"
+        }
+      ]
+    }
+  ]
+}

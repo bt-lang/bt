@@ -1,0 +1,39 @@
+// Verify both public entry names against the same on-disk database.
+db = sqlite('@/entry.db', {})
+query = db.query('CREATE TABLE entries (name TEXT, optional TEXT, payload BLOB)')
+query.exec()
+query.close()
+query = db.query('INSERT INTO entries VALUES (?, ?, ?)').bind('canonical').bind(null).bind(bytes('4254', 'hex'))
+assert(query.exec().rows_affected == 1, 'canonical write')
+query.close()
+db.close()
+
+legacy = sqlite_open('@/entry.db', {})
+query = legacy.query('SELECT name, optional, payload FROM entries')
+row = query.one()
+assert(row.name == 'canonical', 'legacy reads canonical write')
+assert(is_null(row.optional), 'explicit null preserved')
+assert(type(row.payload) == 'Bytes', 'BLOB remains Bytes')
+query.close()
+query = legacy.query('UPDATE entries SET name = ?').bind('legacy')
+assert(query.exec().rows_affected == 1, 'legacy write')
+query.close()
+legacy.close()
+
+db = sqlite('@/entry.db', {})
+query = db.query('SELECT name FROM entries')
+assert(query.one().name == 'legacy', 'canonical reads legacy write')
+query.close()
+query = db.query('SELECT name FROM entries WHERE name = ?').bind('missing')
+assert(is_empty(query.one()), 'missing row is empty')
+query.close()
+db.close()
+
+for index in 0..20 {
+    db = sqlite('@/entry.db', {})
+    db.close()
+    db = sqlite_open('@/entry.db', {})
+    db.close()
+}
+// Output: sqlite-entry-smoke:ok
+print 'sqlite-entry-smoke:ok'

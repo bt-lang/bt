@@ -15,10 +15,12 @@
 **/*.btr
 
 # The root lockfile makes application builds reproducible. Nested lockfiles
-# belong to standalone examples and local extension projects.
+# belong to standalone examples and extension projects. Official extensions
+# retain their lockfiles so their builds and license inventories are reproducible.
 **/Cargo.lock
 !/Cargo.lock
-!/examples/extension-development/sqlite/Cargo.lock
+!/extension/*/Cargo.lock
+/extension/*/module.wasm
 
 # JavaScript and frontend output
 **/node_modules/

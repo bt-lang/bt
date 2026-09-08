@@ -26,7 +26,7 @@ workspace = true
 
 [features]
 default = ["extensions", "ffi"]
-extensions = ["dep:zip", "dep:wasmparser", "dep:wasmtime", "dep:wasmtime-wasi"]
+extensions = ["dep:zip", "dep:wasmparser", "dep:wasmtime", "dep:wasmtime-wasi", "dep:bt-extension-sdk"]
 ffi = ["dep:libffi", "dep:libloading"]
 quic = ["salvo/quinn"]
 desktop = [
@@ -68,6 +68,7 @@ strip = true             # Strip symbols to reduce binary size by roughly 30-50%
 panic = "abort"          # Omit panic stack-unwinding code.
 
 [dependencies]
+bt-extension-sdk = { path = "crates/bt-extension-sdk", features = ["host-process"], optional = true }
 salvo = { package = "salvo_core", version = "0.96.0", default-features = false, features = ["server", "server-handle", "http1", "http2", "fix-http1-request-uri", "matched-path", "cookie", "rustls", "ring", "tls12"] }
 salvo_extra = { version = "0.96.0", default-features = false, features = ["affix-state"] }
 salvo-session = { version = "0.96.0", default-features = false }

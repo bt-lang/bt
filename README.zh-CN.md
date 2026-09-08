@@ -148,8 +148,7 @@ path/to/bt-app build
 | 示例 | 简介 |
 |---|---|
 | [`device-serial.bt`](examples/device-serial.bt) | 通过设备 API 扫描当前可用的串口。 |
-| [`ext-install-demo/`](examples/ext-install-demo/) | 使用已安装的 SQLite 扩展创建、写入并查询本地数据库。 |
-| [`extension-development/`](examples/extension-development/) | 包含 BT 扩展、共享运行时及 SQLite/WASM 打包开发项目。 |
+| [`extension-development/`](examples/extension-development/) | 包含 shared WASM 运行时超时测试夹具。官方扩展源码统一维护在 [`extension/`](extension/README.md)。 |
 | [`ffi-testlib/`](examples/ffi-testlib/) | 使用完整 FFI 签名调用跨平台原生测试库，并包含长稳检查。 |
 | [`ffi-user32/`](examples/ffi-user32/) | 演示在 Windows 上使用推断签名和完整签名调用 `user32.dll`。 |
 
@@ -161,6 +160,7 @@ path/to/bt-app build
 | `src/` | 词法、语法、编译器、字节码 VM、标准库、Web、桌面和 Bundle 核心源码。 |
 | `src-tauri/` | Tauri 配置、权限、能力和编译所需的最小前端占位页。 |
 | `crates/` | Cargo 工作区内的扩展 SDK 与原生 FFI 测试库。 |
+| [`extension/`](extension/README.md) | 独立构建的官方扩展库，包含 SQLite 源码与回归测试。 |
 | `src-tauri/icons/` | 编译期嵌入 `bt` 和 `bt-app` 的图标。 |
 | `examples/` | 供使用者、贡献者和 CI 运行的语言、扩展、Web 与桌面示例。 |
 | `benches/` | 可重复执行的质量与性能工作负载。 |

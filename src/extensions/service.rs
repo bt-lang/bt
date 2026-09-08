@@ -126,6 +126,8 @@ struct HostObjectRoute {
 struct HostObjectTable {
     /// Mapping from script-visible host object IDs to worker-local objects.
     routes: HashMap<u64, HostObjectRoute>,
+    /// Reverse identity map preventing chained returns from allocating duplicate host handles.
+    identities: HashMap<(u32, u32, u64), u64>,
     /// Number of objects currently held by the host routing table for each worker.
     worker_object_counts: Vec<u32>,
     /// Next script-visible host object ID; zero is reserved.
@@ -143,6 +145,7 @@ impl HostObjectTable {
     fn new(runtime: ExtensionRuntime) -> Self {
         Self {
             routes: HashMap::new(),
+            identities: HashMap::new(),
             worker_object_counts: vec![0; runtime.workers as usize],
             next_host_object_id: 1,
             next_generation: 1,
@@ -159,6 +162,13 @@ impl HostObjectTable {
         object: ExtObject,
     ) -> Result<ExtObject, String> {
         let worker_index = self.worker_index(module_name, worker_id)?;
+        let identity = (worker_id, object.type_id, object.object_id);
+        if let Some(&host_object_id) = self.identities.get(&identity) {
+            return Ok(ExtObject {
+                object_id: host_object_id,
+                ..object
+            });
+        }
         if self.routes.len() >= self.max_objects as usize {
             return Err(format!(
                 "extension `{}` shared service exceeds object limit max_objects={}",
@@ -201,6 +211,7 @@ impl HostObjectTable {
             ));
         }
         self.worker_object_counts[worker_index] += 1;
+        self.identities.insert(identity, host_object_id);
         Ok(ExtObject {
             object_id: host_object_id,
             ..object
@@ -229,9 +240,21 @@ impl HostObjectTable {
         let Some(route) = self.routes.remove(&object.object_id) else {
             return;
         };
+        self.identities
+            .remove(&(route.worker_id, route.type_id, route.local_object_id));
         if let Ok(worker_index) = self.worker_index(module_name, route.worker_id) {
             self.worker_object_counts[worker_index] =
                 self.worker_object_counts[worker_index].saturating_sub(1);
+        }
+    }
+
+    /// Retires identities belonging to a store that will be rebuilt after interruption.
+    fn invalidate_worker(&mut self, worker_id: u32) {
+        self.routes.retain(|_, route| route.worker_id != worker_id);
+        self.identities
+            .retain(|(worker, _, _), _| *worker != worker_id);
+        if let Some(count) = self.worker_object_counts.get_mut(worker_id as usize) {
+            *count = 0;
         }
     }
 
@@ -682,6 +705,9 @@ impl ExtensionService {
     /// Marks the target worker as timed out and triggers a shared WASM epoch check.
     fn interrupt_worker(&self, worker_id: u32) {
         if let Some(flag) = self.timeout_flags.get(worker_id as usize) {
+            if let Ok(mut routes) = self.object_routes.lock() {
+                routes.invalidate_worker(worker_id);
+            }
             flag.store(true, Ordering::Release);
             self.module.interrupt_epoch();
         }
@@ -1082,9 +1108,12 @@ mod tests {
                 (func (export "bts_free") (param i32) (param i32))
                 (data (i32.const 16) "\00\09\00\00\00\00\00\00\00\00\01\00\00\00\01\00\00\00\00\00\00\00\04\00\00\00\43\65\6c\6c")
                 (data (i32.const 96) "\00\02\01")
+                (global $next_object (mut i64) (i64.const 0))
                 (func (export "bts_call") (param $call_id i32) (param $args_ptr i32) (param $args_len i32) (result i64)
                     (if (i32.eq (local.get $call_id) (i32.const 1))
                         (then
+                            (global.set $next_object (i64.add (global.get $next_object) (i64.const 1)))
+                            (i64.store (i32.const 30) (global.get $next_object))
                             i64.const 68719476766
                             return
                         )
@@ -1229,6 +1258,36 @@ mod tests {
         assert_eq!(stats.timed_out, 1);
         assert!(stats.completed >= 1);
         service.shutdown();
+    }
+
+    /// Chaining and job recovery preserve one route; disposal and interruption retire it.
+    #[test]
+    fn repeated_object_returns_reuse_and_release_one_host_route() {
+        let runtime = ExtensionRuntime {
+            max_objects: 1,
+            max_worker_objects: 1,
+            ..ExtensionRuntime::default()
+        };
+        let mut table = HostObjectTable::new(runtime);
+        let local = ExtObject {
+            module_id: 0,
+            type_id: 1,
+            type_name: "Media".into(),
+            object_id: 7,
+        };
+        let first = table.register("media", 0, local.clone()).unwrap();
+        for _ in 0..1000 {
+            assert_eq!(table.register("media", 0, local.clone()).unwrap(), first);
+        }
+        assert_eq!(table.stats_snapshot(), (1, vec![1]));
+        table.remove("media", &first);
+        assert!(table.resolve("media", &first).is_err());
+        assert!(table.identities.is_empty());
+        let next = table.register("media", 0, local).unwrap();
+        assert_ne!(next.object_id, first.object_id);
+        table.invalidate_worker(0);
+        assert!(table.resolve("media", &next).is_err());
+        assert_eq!(table.stats_snapshot(), (0, vec![0]));
     }
 
     /// Shared object results become host handles and are restored to worker-local handles for method calls.
