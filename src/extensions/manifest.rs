@@ -80,9 +80,6 @@ pub struct ExtensionManifest {
     pub entry: String,
     /// In-package path to the bindings description file.
     pub bindings: String,
-    /// Legacy permission metadata accepted for package compatibility and otherwise ignored.
-    #[serde(default, rename = "permissions")]
-    pub legacy_permissions: Option<serde_json::Value>,
     /// Call resource limits declared by the extension.
     #[serde(default)]
     pub limits: ExtensionLimits,
@@ -501,23 +498,19 @@ mod tests {
         let manifest = ExtensionManifest::parse(&valid_manifest_json()).unwrap();
         assert_eq!(manifest.name, "calc");
         assert_eq!(manifest.kind, ExtensionKind::Bt);
-        assert!(manifest.legacy_permissions.is_none());
         assert_eq!(manifest.runtime.mode, ExtensionRuntimeMode::ThreadLocal);
         assert_eq!(manifest.runtime.workers, DEFAULT_RUNTIME_WORKERS);
     }
 
-    /// Legacy permission metadata remains readable but has no runtime semantics.
+    /// Removed package-level permission metadata must be rejected as an unknown field.
     #[test]
-    fn accepts_legacy_permissions_without_validation() {
+    fn rejects_removed_permissions_field() {
         let raw = valid_manifest_json().replace(
             "\"bindings\": \"bindings.json\",",
-            "\"bindings\": \"bindings.json\",\n            \"permissions\": [\"legacy_private_capability\"],",
+            "\"bindings\": \"bindings.json\",\n            \"permissions\": [\"fs_read\"],",
         );
-        let manifest = ExtensionManifest::parse(&raw).unwrap();
-        assert_eq!(
-            manifest.legacy_permissions,
-            Some(serde_json::json!(["legacy_private_capability"]))
-        );
+        let error = ExtensionManifest::parse(&raw).unwrap_err();
+        assert!(error.contains("unknown field `permissions`"));
     }
 
     /// A kind/abi mismatch should fail.

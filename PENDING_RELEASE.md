@@ -28,10 +28,11 @@ official website update page, then restore this file to this empty template.
   media entry names have been removed; saving still requires explicit arguments.
 - Extension manifests no longer declare per-package permissions. All local `.bts`
   packages use the same host ABI without registry lookup or source-based runtime
-  restrictions; legacy `permissions` metadata is accepted and ignored. WASI
-  project file access and the optional bounded native process service now follow
-  only the BT process-wide policy. Native processes still run outside the WASI
-  sandbox, so installing an extension means trusting its code.
+  restrictions. The removed `permissions` field is rejected so extension authors
+  must use the new manifest format. WASI project file access and the optional
+  bounded native process service now follow only the BT process-wide policy.
+  Native processes still run outside the WASI sandbox, so installing an extension
+  means trusting its code.
 - Chained shared-extension calls and recovered job handles reuse their existing
   host object identity; closing or rebuilding a timed-out worker retires its
   routes. Array-returning extension lookups can return `empty` for absence,
@@ -54,9 +55,9 @@ official website update page, then restore this file to this empty template.
   在同一对象上替换像素，不读取绑定文件，也不自动写入文件。使用同来源的 `clip.job(id)`
   恢复视频任务。删除尚未发布的媒体前缀入口；保存仍需显式传参。
 - 扩展 manifest 不再声明包级权限。所有本地 `.bts` 使用相同宿主 ABI，不查询官网，
-  也不按来源限制运行能力；旧 `permissions` 元数据继续兼容读取但会被忽略。WASI 项目
-  文件访问和可选的有界原生进程服务现在只服从 BT 进程级策略。原生进程仍运行在 WASI
-  沙箱之外，因此安装扩展即表示信任其代码。
+  也不按来源限制运行能力。已删除的 `permissions` 字段会被拒绝，扩展作者必须使用新版
+  manifest 格式。WASI 项目文件访问和可选的有界原生进程服务现在只服从 BT 进程级
+  策略。原生进程仍运行在 WASI 沙箱之外，因此安装扩展即表示信任其代码。
 - shared 扩展链式调用和恢复的任务句柄复用已有宿主对象身份；关闭或重建超时 worker
   时移除相应路由。声明数组返回的扩展查询可用 `empty` 表示不存在，并保留与显式
   `null` 的区别。

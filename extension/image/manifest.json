@@ -1,14 +1,28 @@
 {
-  "format": "bts", "format_version": 1,
-  "name": "image", "version": "1.0.0",
+  "format": "bts",
+  "format_version": 1,
+  "name": "image",
+  "version": "1.0.0",
   "description": "Bounded RGBA image processing with PNG, JPEG, WebP and BMP codecs",
-  "author": "Lifeng Yan", "kind": "wasm", "abi": "bts-wasi-1",
-  "bt_min_version": "1.1.4", "api_version": 1,
-  "entry": "module.wasm", "bindings": "bindings.json",
-  "limits": { "max_args_bytes": 16777216, "max_result_bytes": 16777216 },
+  "author": "Lifeng Yan",
+  "kind": "wasm",
+  "abi": "bts-wasi-1",
+  "bt_min_version": "1.1.4",
+  "api_version": 1,
+  "entry": "module.wasm",
+  "bindings": "bindings.json",
+  "limits": {
+    "max_args_bytes": 16777216,
+    "max_result_bytes": 16777216
+  },
   "runtime": {
-    "mode": "shared", "workers": 2, "queue_limit": 16,
-    "call_timeout_ms": 30000, "idle_ttl_ms": 300000,
-    "max_objects": 64, "max_worker_objects": 32, "max_inflight_calls": 4
+    "mode": "shared",
+    "workers": 2,
+    "queue_limit": 16,
+    "call_timeout_ms": 30000,
+    "idle_ttl_ms": 300000,
+    "max_objects": 64,
+    "max_worker_objects": 32,
+    "max_inflight_calls": 4
   }
 }
