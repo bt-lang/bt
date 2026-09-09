@@ -257,7 +257,6 @@ impl ExtensionBindings {
                 &function.params,
                 &function.returns,
                 &object_names,
-                manifest,
                 &mut call_ids,
             )?;
             if !function_names.insert(function.name.as_str()) {
@@ -290,7 +289,6 @@ impl ExtensionBindings {
                     &method.params,
                     &method.returns,
                     &object_names,
-                    manifest,
                     &mut call_ids,
                 )?;
                 validate_method_lifecycle(&object.name, method)?;
@@ -347,7 +345,6 @@ fn validate_callable(
     params: &[BindingParam],
     returns: &str,
     object_names: &HashSet<&str>,
-    manifest: &ExtensionManifest,
     call_ids: &mut HashSet<u32>,
 ) -> Result<(), String> {
     if !is_snake_case_identifier(name) {
@@ -362,7 +359,7 @@ fn validate_callable(
     if !call_ids.insert(id) {
         return Err(format!("bindings contains a duplicate call ID `{}`", id));
     }
-    validate_params(field, name, params, manifest)?;
+    validate_params(field, name, params)?;
     validate_return_type(field, name, returns, object_names)
 }
 
@@ -397,7 +394,6 @@ fn validate_params(
     field: &str,
     callable_name: &str,
     params: &[BindingParam],
-    manifest: &ExtensionManifest,
 ) -> Result<(), String> {
     if params.len() > MAX_BINDING_PARAMS {
         return Err(format!(
@@ -419,17 +415,16 @@ fn validate_params(
                 field, callable_name, param.name
             ));
         }
-        validate_param_role(field, callable_name, param, manifest)?;
+        validate_param_role(field, callable_name, param)?;
     }
     Ok(())
 }
 
-/// Validate that parameter roles match manifest permission declarations.
+/// Validate that path roles are applied only to string parameters.
 fn validate_param_role(
     field: &str,
     callable_name: &str,
     param: &BindingParam,
-    manifest: &ExtensionManifest,
 ) -> Result<(), String> {
     if param.role.is_path() && param.value_type != BindingValueType::String {
         return Err(format!(
@@ -441,25 +436,7 @@ fn validate_param_role(
             param.value_type.name()
         ));
     }
-    let permissions = manifest.permissions;
-    match param.role {
-        BindingParamRole::Value => Ok(()),
-        BindingParamRole::PathRead if permissions.fs_read => Ok(()),
-        BindingParamRole::PathWrite if permissions.fs_write => Ok(()),
-        BindingParamRole::PathDir if permissions.uses_fs() => Ok(()),
-        BindingParamRole::PathRead => Err(format!(
-            "{}.{} parameter `{}` uses path_read role, but manifest.permissions.fs_read is not declared",
-            field, callable_name, param.name
-        )),
-        BindingParamRole::PathWrite => Err(format!(
-            "{}.{} parameter `{}` uses path_write role, but manifest.permissions.fs_write is not declared",
-            field, callable_name, param.name
-        )),
-        BindingParamRole::PathDir => Err(format!(
-            "{}.{} parameter `{}` uses path_dir role, but neither manifest.permissions.fs_read nor manifest.permissions.fs_write is declared",
-            field, callable_name, param.name
-        )),
-    }
+    Ok(())
 }
 
 /// Validate that the return type is either primitive or a declared object type.
@@ -496,8 +473,7 @@ mod tests {
                 "bt_min_version": "1.1.0",
                 "api_version": 1,
                 "entry": "src/lib.bt",
-                "bindings": "bindings.json",
-                "permissions": ["fs_read"]
+                "bindings": "bindings.json"
             }"#,
         )
         .unwrap()
@@ -580,17 +556,18 @@ mod tests {
         assert!(err.contains("return type"));
     }
 
-    /// Path roles must be backed by manifest-declared permissions.
+    /// Path roles require string parameters but no manifest permission declaration.
     #[test]
-    fn rejects_path_role_without_permission() {
-        let mut manifest = valid_manifest();
-        manifest.permissions.fs_read = false;
+    fn allows_path_role_without_manifest_permission() {
         let raw = valid_bindings_json().replace(
             "{ \"name\": \"value\", \"type\": \"int\" }",
             "{ \"name\": \"input\", \"type\": \"string\", \"role\": \"path_read\" }",
         );
-        let err = ExtensionBindings::parse(&raw, &manifest).unwrap_err();
-        assert!(err.contains("fs_read is not declared"));
+        let bindings = ExtensionBindings::parse(&raw, &valid_manifest()).unwrap();
+        assert_eq!(
+            bindings.functions[0].params[0].role,
+            BindingParamRole::PathRead
+        );
     }
 
     /// Returning an unknown object type should fail.

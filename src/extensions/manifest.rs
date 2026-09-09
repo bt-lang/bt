@@ -1,10 +1,9 @@
 //! Parsing and validation for `.bts` extension package manifests.
 
-use serde::{de::Error as DeError, Deserialize, Deserializer};
+use serde::Deserialize;
 
 use crate::extensions::is_lower_identifier;
 use crate::extensions::is_safe_package_path;
-use crate::permission::{self, Capability};
 
 /// Supported extension package format version.
 pub const SUPPORTED_FORMAT_VERSION: u32 = 1;
@@ -81,9 +80,9 @@ pub struct ExtensionManifest {
     pub entry: String,
     /// In-package path to the bindings description file.
     pub bindings: String,
-    /// Permissions declared by the extension.
-    #[serde(default)]
-    pub permissions: ExtensionPermissions,
+    /// Legacy permission metadata accepted for package compatibility and otherwise ignored.
+    #[serde(default, rename = "permissions")]
+    pub legacy_permissions: Option<serde_json::Value>,
     /// Call resource limits declared by the extension.
     #[serde(default)]
     pub limits: ExtensionLimits,
@@ -150,99 +149,6 @@ impl ExtensionRuntimeMode {
     pub fn is_shared(self) -> bool {
         matches!(self, ExtensionRuntimeMode::Shared)
     }
-}
-
-/// Permissions declared by the extension.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ExtensionPermissions {
-    /// Whether read access to filesystem paths is declared.
-    pub fs_read: bool,
-    /// Whether write access to filesystem paths is declared.
-    pub fs_write: bool,
-    /// Whether network capabilities such as TCP, UDP, WebSocket, and DNS are declared.
-    pub net: bool,
-    /// Whether HTTP client capabilities are declared.
-    pub http: bool,
-    /// Whether process launch or management capabilities are declared.
-    pub process: bool,
-    /// Whether environment variable read/write capabilities are declared.
-    pub env: bool,
-}
-
-impl<'de> Deserialize<'de> for ExtensionPermissions {
-    /// Parse arrays like `["fs_read", "fs_write"]` into internal boolean flags.
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let names = Vec::<String>::deserialize(deserializer)?;
-        let mut permissions = ExtensionPermissions::default();
-        for name in names {
-            match name.as_str() {
-                "fs_read" => set_permission_flag(&mut permissions.fs_read, "fs_read")?,
-                "fs_write" => set_permission_flag(&mut permissions.fs_write, "fs_write")?,
-                "net" => set_permission_flag(&mut permissions.net, "net")?,
-                "http" => set_permission_flag(&mut permissions.http, "http")?,
-                "process" => set_permission_flag(&mut permissions.process, "process")?,
-                "env" => set_permission_flag(&mut permissions.env, "env")?,
-                _ => {
-                    return Err(D::Error::custom(format!(
-                        "manifest.permissions contains unknown permission `{}`",
-                        name
-                    )));
-                }
-            }
-        }
-        Ok(permissions)
-    }
-}
-
-impl ExtensionPermissions {
-    /// Return the permission names used in the manifest array.
-    pub fn names(self) -> Vec<&'static str> {
-        let mut names = Vec::with_capacity(6);
-        if self.fs_read {
-            names.push("fs_read");
-        }
-        if self.fs_write {
-            names.push("fs_write");
-        }
-        if self.net {
-            names.push("net");
-        }
-        if self.http {
-            names.push("http");
-        }
-        if self.process {
-            names.push("process");
-        }
-        if self.env {
-            names.push("env");
-        }
-        names
-    }
-
-    /// Check whether the extension declares any filesystem capability.
-    pub fn uses_fs(self) -> bool {
-        self.fs_read || self.fs_write
-    }
-
-    /// Check whether the extension declares any permission capability.
-    pub fn is_empty(self) -> bool {
-        !self.fs_read && !self.fs_write && !self.net && !self.http && !self.process && !self.env
-    }
-}
-
-/// Set a single permission flag and reject duplicate declarations.
-fn set_permission_flag<E: DeError>(flag: &mut bool, name: &str) -> Result<(), E> {
-    if *flag {
-        return Err(E::custom(format!(
-            "manifest.permissions declares `{}` more than once",
-            name
-        )));
-    }
-    *flag = true;
-    Ok(())
 }
 
 /// Extension call resource limits.
@@ -360,7 +266,6 @@ impl ExtensionManifest {
         validate_package_path_field("manifest.bindings", &self.bindings)?;
         self.validate_limits()?;
         self.validate_runtime()?;
-        self.validate_process_permissions()?;
         Ok(())
     }
 
@@ -433,30 +338,6 @@ impl ExtensionManifest {
         }
         Ok(())
     }
-
-    /// Validate the intersection between declared extension permissions and current process permissions.
-    fn validate_process_permissions(&self) -> Result<(), String> {
-        let permissions = self.permissions;
-        if permissions.fs_read {
-            check_permission(self, Capability::Fs, "fs_read")?;
-        }
-        if permissions.fs_write {
-            check_permission(self, Capability::Fs, "fs_write")?;
-        }
-        if permissions.net {
-            check_permission(self, Capability::Net, "net")?;
-        }
-        if permissions.http {
-            check_permission(self, Capability::Http, "http")?;
-        }
-        if permissions.process {
-            check_permission(self, Capability::Process, "process")?;
-        }
-        if permissions.env {
-            check_permission(self, Capability::Env, "env")?;
-        }
-        Ok(())
-    }
 }
 
 /// Validate a shared runtime u32 field range.
@@ -473,20 +354,6 @@ fn validate_runtime_u64_range(field: &str, value: u64, max: u64) -> Result<(), S
         return Err(format!("{} must be in the range 1..={}", field, max));
     }
     Ok(())
-}
-
-/// Check whether the current process allows one declared capability.
-fn check_permission(
-    manifest: &ExtensionManifest,
-    capability: Capability,
-    permission_name: &str,
-) -> Result<(), String> {
-    permission::check(capability).map_err(|err| {
-        format!(
-            "Extension `{}` declares `{}` permission, but the current process permissions do not allow it: {}",
-            manifest.name, permission_name, err
-        )
-    })
 }
 
 /// Validate a plain text field length.
@@ -602,7 +469,6 @@ mod tests {
             "api_version": 1,
             "entry": "src/lib.bt",
             "bindings": "bindings.json",
-            "permissions": [],
             "limits": {
                 "max_args_bytes": 4096,
                 "max_result_bytes": 4096
@@ -635,42 +501,23 @@ mod tests {
         let manifest = ExtensionManifest::parse(&valid_manifest_json()).unwrap();
         assert_eq!(manifest.name, "calc");
         assert_eq!(manifest.kind, ExtensionKind::Bt);
-        assert!(manifest.permissions.is_empty());
+        assert!(manifest.legacy_permissions.is_none());
         assert_eq!(manifest.runtime.mode, ExtensionRuntimeMode::ThreadLocal);
         assert_eq!(manifest.runtime.workers, DEFAULT_RUNTIME_WORKERS);
     }
 
-    /// permissions must be an array that declares only the required capabilities.
+    /// Legacy permission metadata remains readable but has no runtime semantics.
     #[test]
-    fn parses_permissions_array() {
+    fn accepts_legacy_permissions_without_validation() {
         let raw = valid_manifest_json().replace(
-            "\"permissions\": []",
-            "\"permissions\": [\"fs_read\", \"fs_write\"]",
+            "\"bindings\": \"bindings.json\",",
+            "\"bindings\": \"bindings.json\",\n            \"permissions\": [\"legacy_private_capability\"],",
         );
         let manifest = ExtensionManifest::parse(&raw).unwrap();
-        assert!(manifest.permissions.fs_read);
-        assert!(manifest.permissions.fs_write);
-        assert_eq!(manifest.permissions.names(), vec!["fs_read", "fs_write"]);
-    }
-
-    /// Unknown capabilities in permissions should be rejected.
-    #[test]
-    fn rejects_unknown_permission_name() {
-        let raw =
-            valid_manifest_json().replace("\"permissions\": []", "\"permissions\": [\"desktop\"]");
-        let err = ExtensionManifest::parse(&raw).unwrap_err();
-        assert!(err.contains("unknown permission"));
-    }
-
-    /// Duplicate capabilities in permissions should be rejected.
-    #[test]
-    fn rejects_duplicate_permission_name() {
-        let raw = valid_manifest_json().replace(
-            "\"permissions\": []",
-            "\"permissions\": [\"fs_read\", \"fs_read\"]",
+        assert_eq!(
+            manifest.legacy_permissions,
+            Some(serde_json::json!(["legacy_private_capability"]))
         );
-        let err = ExtensionManifest::parse(&raw).unwrap_err();
-        assert!(err.contains("declares"));
     }
 
     /// A kind/abi mismatch should fail.

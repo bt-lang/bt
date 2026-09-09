@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Optional bounded host-process service for extensions that declare process access.
+/// Optional bounded host-process service for extensions running on a compatible BT host.
 #[cfg(feature = "host-process")]
 pub mod host_process;
 

@@ -184,9 +184,9 @@ Cancel/close requests return promptly; the native worker kills and waits for the
 exact child process, closes pipes and removes incomplete owned files afterward.
 Cleanup can therefore be observed shortly after cancellation. Completed files
 remain after close. Extension/service shutdown also cancels owned native work.
-Filesystem permission checks and declared paths are enforced by the host. Granting
-`process` nevertheless permits native execution outside the WASI sandbox: it is
-a trusted-extension capability, not an OS sandbox for arbitrary downloaded code.
+Process-wide filesystem policy and declared cleanup paths are enforced by the host.
+Native execution nevertheless occurs outside the WASI sandbox; installing an
+extension means trusting its code, just as with other local program dependencies.
 
 ## Example (CLI)
 

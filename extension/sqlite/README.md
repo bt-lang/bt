@@ -12,7 +12,7 @@ mirrors the MySQL standard library: call `query(sql)`, then `bind()` or
 | `src/lib.rs` | Extension entry points, connection and query state, SQL execution, and value conversion. |
 | `src/tests.rs` | Regression tests for the public chained query interface and resource lifecycle. |
 | `bindings.json` | Public functions, object methods, stable dispatch IDs, and disposal metadata. |
-| `manifest.json` | Package identity, permissions, and shared runtime limits. |
+| `manifest.json` | Package identity and shared runtime limits. |
 | `Cargo.toml` / `Cargo.lock` | Standalone Rust project and locked dependencies. |
 | `build.ps1` | Format check, native tests, WASI build, and isolated package staging. |
 | `verify.ps1` / `smoke.bt` | Fresh-project package installation and canonical/legacy BT API acceptance. |
@@ -48,7 +48,7 @@ db.close()
 
 `sqlite_open(path, options)` remains available as a deprecated compatibility
 alias for existing scripts. Both names use the same connection implementation,
-argument rules, permissions, and resource limits. New scripts should use `sqlite`.
+argument rules, process policy, and resource limits. New scripts should use `sqlite`.
 The legacy dispatch ID is unchanged; the canonical entry has its own stable ID.
 
 ## Build and package

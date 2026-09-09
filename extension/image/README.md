@@ -32,7 +32,7 @@ is unchanged by color adjustment. Watermarks use Porter-Duff source-over.
 
 The only global entry is `image(path)`. It creates a lightweight object bound to a
 project path without reading image contents or creating the file. The host still
-normalizes the `path_write` argument and checks permissions, project boundaries
+normalizes the `path_write` argument and checks process policy, project boundaries
 and the existing parent directory during binding. Pixel operations (`info`,
 `resize`, `crop`, `rotate`, watermarks, `text`, `adjust`, `save`, `encode` and
 `pixel`) load that path on their first use; subsequent calls reuse the pixels.
@@ -208,7 +208,7 @@ compatible BT host; only platforms actually listed in that record are verified.
 |---|---|
 | `src/lib.rs` | Public dispatch, pixel ownership, codec and image operations. |
 | `src/tests.rs` | Deterministic functionality, resource and performance checks. |
-| `bindings.json` / `manifest.json` | API contract, permissions and bounded runtime configuration. |
+| `bindings.json` / `manifest.json` | API contract, package identity, and bounded runtime configuration. |
 | `build.ps1` | Reproducible standalone WASI build and checked package. |
 | `smoke.bt` | Full public BT API acceptance using locally generated fixtures. |
 | `verify.ps1` | Isolated package installation, complete smoke and negative BT cases and lazy object lifecycle checks. |

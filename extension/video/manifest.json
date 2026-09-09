@@ -5,7 +5,6 @@
   "author": "Lifeng Yan", "kind": "wasm", "abi": "bts-wasi-1",
   "bt_min_version": "1.1.4", "api_version": 1,
   "entry": "module.wasm", "bindings": "bindings.json",
-  "permissions": ["fs_read", "fs_write", "process"],
   "limits": {"max_args_bytes": 16777216, "max_result_bytes": 16777216},
   "runtime": {"mode": "shared", "workers": 1, "queue_limit": 32,
     "call_timeout_ms": 2000, "idle_ttl_ms": 300000,

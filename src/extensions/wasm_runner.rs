@@ -27,13 +27,14 @@ use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
 
 use crate::extensions::bindings::{BindingParam, BindingParamRole, BindingValueType};
 use crate::extensions::manager::ExtObject;
-use crate::extensions::manifest::{ExtensionPermissions, ExtensionRuntime};
+use crate::extensions::manifest::ExtensionRuntime;
 use crate::extensions::package::ExtensionPackage;
 use crate::extensions::registry::{ExtensionModuleId, RegisteredFunction, RegisteredMethod};
 use crate::extensions::value_codec::{
     decode_call_output, encode_value, ExtensionCallOutput, ValueCodecLimits,
 };
 use crate::path as bt_path;
+use crate::permission::{self, Capability};
 use crate::value::Value;
 use indexmap::IndexMap;
 
@@ -75,12 +76,10 @@ pub struct WasmRunnerModule {
     package_path: String,
     /// Project root normalized according to BT path rules.
     project_root: PathBuf,
-    /// Canonical project root preopened for WASI when filesystem access is required.
+    /// Canonical project root preopened for WASI when process-level file access is enabled.
     canonical_project_root: Option<PathBuf>,
     /// Normalized in-package path to the WASM entry point.
     entry_path: String,
-    /// Permissions declared by the extension manifest.
-    permissions: ExtensionPermissions,
     /// Runtime configuration validated from the manifest.
     runtime: ExtensionRuntime,
     /// Wasmtime compilation engine.
@@ -113,7 +112,6 @@ impl fmt::Debug for WasmRunnerModule {
             .field("project_root", &self.project_root)
             .field("canonical_project_root", &self.canonical_project_root)
             .field("entry_path", &self.entry_path)
-            .field("permissions", &self.permissions)
             .field("runtime", &self.runtime)
             .field("timeout_interrupt", &self.timeout_interrupt)
             .field("functions", &self.functions)
@@ -142,12 +140,10 @@ struct WasmRunnerCacheKey {
     module_id: ExtensionModuleId,
     /// Display text for the extension package's local path.
     package_path: String,
-    /// WASI preopened project-root path, or an empty string without file permissions.
+    /// WASI preopened project-root path, or an empty string when process policy disables files.
     project_root_key: String,
     /// Normalized in-package path to the WASM entry point.
     entry_path: String,
-    /// Permission bits that affect WASI runtime capabilities.
-    permissions_key: u8,
     /// Fingerprint of the WASM binary contents.
     wasm_hash: u64,
 }
@@ -240,9 +236,8 @@ impl WasmRunnerModule {
         package: &ExtensionPackage,
         timeout_interrupt: bool,
     ) -> Result<Self, String> {
-        validate_wasm_permissions(&package.manifest.name, package.manifest.permissions)?;
         let project_root = bt_path::normalize_path(project_root);
-        let canonical_project_root = if package.manifest.permissions.uses_fs() {
+        let canonical_project_root = if permission::is_allowed(Capability::Fs)? {
             Some(canonicalize_project_root(
                 &package.manifest.name,
                 &project_root,
@@ -295,7 +290,6 @@ impl WasmRunnerModule {
             project_root,
             canonical_project_root,
             entry_path: package.manifest.entry.clone(),
-            permissions: package.manifest.permissions,
             runtime: package.manifest.runtime,
             engine,
             timeout_interrupt,
@@ -310,7 +304,6 @@ impl WasmRunnerModule {
                 package_path: package.path.display().to_string(),
                 project_root_key,
                 entry_path: package.manifest.entry.clone(),
-                permissions_key: permissions_cache_key(package.manifest.permissions),
                 wasm_hash,
             },
         })
@@ -546,8 +539,9 @@ impl WasmRunnerModule {
             ));
         }
         if self.canonical_project_root.is_none() {
+            permission::check(Capability::Fs)?;
             return Err(format!(
-                "WASM extension `{}` call `{}` parameter `{}` uses the {} role, but the extension declares no filesystem permission",
+                "WASM extension `{}` call `{}` parameter `{}` cannot use the {} role because its WASI filesystem is unavailable",
                 self.module_name,
                 call_label,
                 param_name,
@@ -940,11 +934,7 @@ impl WasmRunnerRuntime {
         })?;
         let mut wasi = WasiCtxBuilder::new();
         configure_wasi_preopens(module, &mut wasi)?;
-        crate::extensions::process_host::add_to_linker(
-            &mut linker,
-            &module.project_root,
-            module.permissions,
-        )?;
+        crate::extensions::process_host::add_to_linker(&mut linker, &module.project_root)?;
         let mut store = Store::new(&module.engine, wasi.build_p1());
         configure_epoch_timeout_callback(module, &mut store, timeout_abort.clone());
         let instance = linker
@@ -1504,32 +1494,7 @@ fn call_optional_module_id_export(
     })
 }
 
-/// Validates the permissions supported for WASM extensions.
-fn validate_wasm_permissions(
-    module_name: &str,
-    permissions: ExtensionPermissions,
-) -> Result<(), String> {
-    let mut unsupported = Vec::with_capacity(4);
-    if permissions.net {
-        unsupported.push("net");
-    }
-    if permissions.http {
-        unsupported.push("http");
-    }
-    if permissions.env {
-        unsupported.push("env");
-    }
-    if !unsupported.is_empty() {
-        return Err(format!(
-            "Extension `{}` declares the `{}` permission, but the WASM runner does not currently expose that capability",
-            module_name,
-            unsupported.join(", ")
-        ));
-    }
-    Ok(())
-}
-
-/// Validates and canonicalizes the project root for extensions requiring filesystem access.
+/// Validates and canonicalizes the project root for WASI filesystem access.
 fn canonicalize_project_root(module_name: &str, project_root: &Path) -> Result<PathBuf, String> {
     let canonical = fs::canonicalize(project_root).map_err(|err| {
         format!(
@@ -1557,7 +1522,7 @@ fn canonicalize_project_root(module_name: &str, project_root: &Path) -> Result<P
     Ok(canonical)
 }
 
-/// Preopens the project root in the WASI P1 context according to manifest permissions.
+/// Preopens the project root with full WASI file access allowed by the BT process policy.
 fn configure_wasi_preopens(
     module: &WasmRunnerModule,
     wasi: &mut WasiCtxBuilder,
@@ -1568,8 +1533,8 @@ fn configure_wasi_preopens(
     wasi.preopened_dir(
         project_root,
         ".",
-        wasi_dir_perms(module.permissions),
-        wasi_file_perms(module.permissions),
+        DirPerms::READ | DirPerms::MUTATE,
+        FilePerms::READ | FilePerms::WRITE,
     )
     .map_err(|err| {
         format!(
@@ -1580,40 +1545,6 @@ fn configure_wasi_preopens(
         )
     })?;
     Ok(())
-}
-
-/// Converts extension manifest file permissions to WASI directory permissions.
-fn wasi_dir_perms(permissions: ExtensionPermissions) -> DirPerms {
-    let mut perms = DirPerms::empty();
-    if permissions.uses_fs() {
-        perms |= DirPerms::READ;
-    }
-    if permissions.fs_write {
-        perms |= DirPerms::MUTATE;
-    }
-    perms
-}
-
-/// Converts extension manifest file permissions to WASI file permissions.
-fn wasi_file_perms(permissions: ExtensionPermissions) -> FilePerms {
-    let mut perms = FilePerms::empty();
-    if permissions.fs_read {
-        perms |= FilePerms::READ;
-    }
-    if permissions.fs_write {
-        perms |= FilePerms::WRITE;
-    }
-    perms
-}
-
-/// Packs the permission set into a WASM runtime cache key.
-fn permissions_cache_key(permissions: ExtensionPermissions) -> u8 {
-    u8::from(permissions.fs_read)
-        | (u8::from(permissions.fs_write) << 1)
-        | (u8::from(permissions.net) << 2)
-        | (u8::from(permissions.http) << 3)
-        | (u8::from(permissions.process) << 4)
-        | (u8::from(permissions.env) << 5)
 }
 
 /// Validates one component of a relative WASI path.
@@ -1934,8 +1865,7 @@ mod tests {
                 "bt_min_version": "1.1.0",
                 "api_version": 1,
                 "entry": "module.wasm",
-                "bindings": "bindings.json",
-                "permissions": []
+                "bindings": "bindings.json"
             }"#,
         )
         .unwrap();

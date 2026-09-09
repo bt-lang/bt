@@ -279,8 +279,7 @@ mod tests {
                 "bt_min_version": "1.1.0",
                 "api_version": 1,
                 "entry": "src/lib.bt",
-                "bindings": "bindings.json",
-                "permissions": []
+                "bindings": "bindings.json"
             }}"#,
             extension_name
         );

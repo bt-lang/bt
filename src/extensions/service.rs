@@ -880,7 +880,6 @@ mod tests {
                 "api_version": 1,
                 "entry": "module.wasm",
                 "bindings": "bindings.json",
-                "permissions": [],
                 "runtime": {{
                     "mode": "shared",
                     "workers": 1,
@@ -1047,7 +1046,6 @@ mod tests {
                 "api_version": 1,
                 "entry": "module.wasm",
                 "bindings": "bindings.json",
-                "permissions": [],
                 "runtime": {{
                     "mode": "shared",
                     "workers": {},

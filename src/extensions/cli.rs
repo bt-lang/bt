@@ -119,8 +119,6 @@ struct RegistryVersion {
     /// Whether this version has been withdrawn from the official installation channel.
     #[serde(default)]
     yanked: bool,
-    /// Summary of permissions declared by the extension.
-    permissions: Option<Vec<String>>,
 }
 
 /// Public extension information returned by the official registry.
@@ -451,7 +449,6 @@ fn scaffold_manifest(name: &str, kind: ExtensionKind) -> String {
     "api_version": 1,
     "entry": "{entry}",
     "bindings": "bindings.json",
-    "permissions": [],
     "limits": {{
         "max_args_bytes": 16777216,
         "max_result_bytes": 16777216
@@ -1573,15 +1570,6 @@ fn print_package_info(package: &ExtensionPackage) {
     println!("ABI: {}", package.manifest.abi);
     println!("Entry point: {}", package.manifest.entry);
     println!("Bindings: {}", package.manifest.bindings);
-    let permissions = package.manifest.permissions.names();
-    println!(
-        "Permissions: {}",
-        if permissions.is_empty() {
-            "None".to_string()
-        } else {
-            permissions.join(", ")
-        }
-    );
     println!(
         "Limits: max_args_bytes={} max_result_bytes={}",
         package.manifest.limits.max_args_bytes, package.manifest.limits.max_result_bytes
@@ -2064,6 +2052,8 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
 
         handle_new(&[project.to_string_lossy().to_string()]).unwrap();
+        let manifest = fs::read_to_string(project.join("manifest.json")).unwrap();
+        assert!(!manifest.contains("\"permissions\""));
         handle_build(&[
             project.to_string_lossy().to_string(),
             "-o".to_string(),
@@ -2146,6 +2136,8 @@ mod tests {
         ])
         .unwrap();
 
+        let manifest = fs::read_to_string(project.join("manifest.json")).unwrap();
+        assert!(!manifest.contains("\"permissions\""));
         let cargo = fs::read_to_string(project.join("Cargo.toml")).unwrap();
         assert!(cargo.contains("bt-extension-sdk"));
         let source = fs::read_to_string(project.join("src").join("lib.rs")).unwrap();
@@ -2175,7 +2167,6 @@ mod tests {
                 "api_version": 1,
                 "entry": "module.wasm",
                 "bindings": "bindings.json",
-                "permissions": [],
                 "runtime": {
                     "mode": "shared",
                     "workers": 1,

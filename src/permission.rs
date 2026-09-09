@@ -181,7 +181,7 @@ impl PermissionConfig {
 
 /// Checks whether the specified capability is allowed.
 pub fn check(capability: Capability) -> Result<(), String> {
-    if with_permission_config(|config| config.is_allowed(capability))? {
+    if is_allowed(capability)? {
         return Ok(());
     }
     PERMISSION_DENIED.fetch_add(1, Ordering::Relaxed);
@@ -191,6 +191,11 @@ pub fn check(capability: Capability) -> Result<(), String> {
         PERMISSION_ALLOW_ENV,
         PERMISSION_DENY_ENV
     ))
+}
+
+/// Returns whether the process-level policy allows a capability without recording a denial.
+pub fn is_allowed(capability: Capability) -> Result<bool, String> {
+    with_permission_config(|config| config.is_allowed(capability))
 }
 
 /// Returns permission statistics.

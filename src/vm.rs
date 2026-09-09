@@ -7722,8 +7722,7 @@ mod tests {
                     "bt_min_version": "1.1.0",
                     "api_version": 1,
                     "entry": "src/lib.bt",
-                    "bindings": "bindings.json",
-                    "permissions": []
+                    "bindings": "bindings.json"
                 }"#,
             )
             .unwrap();
@@ -7831,7 +7830,6 @@ mod tests {
                     "api_version": 1,
                     "entry": "module.wasm",
                     "bindings": "bindings.json",
-                    "permissions": ["fs_read", "fs_write"],
                     "limits": {
                         "max_args_bytes": 4096,
                         "max_result_bytes": 4096
@@ -8104,8 +8102,7 @@ mod tests {
                     "bt_min_version": "1.1.0",
                     "api_version": 1,
                     "entry": "module.wasm",
-                    "bindings": "bindings.json",
-                    "permissions": []
+                    "bindings": "bindings.json"
                 }"#,
             )
             .unwrap();
@@ -10270,6 +10267,21 @@ for i in 0..10 step -2 {
             fs::read_to_string(project.root.join("nested/out.txt")).unwrap(),
             "hello wasi"
         );
+    }
+
+    /// Extension file access follows only the process-wide filesystem policy.
+    #[cfg(feature = "extensions")]
+    #[test]
+    fn wasm_extension_path_roles_respect_process_wide_filesystem_policy() {
+        let project = fresh_temp_project("extension-file-policy");
+        write_file_demo_extension(&project.root);
+        write_text(&project.root.join("in.txt"), "hello wasi");
+
+        permission::with_test_config(None, Some("fs"), || {
+            let err = run_extension_project_source(&project.root, "file_demo('@/in.txt')")
+                .expect_err("process-wide filesystem denial should reject extension paths");
+            assert!(err.message.contains("capability `fs` is disabled"));
+        });
     }
 
     /// WASM path role must deny escape from the project root via `..`.

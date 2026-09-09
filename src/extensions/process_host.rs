@@ -1,8 +1,8 @@
-//! Optional, permission-gated native process imports for WASI extensions.
+//! Optional native process imports for WASI extensions.
 //!
 //! Process execution is a native capability, outside the WASI filesystem sandbox.
-//! The import is installed only for extensions declaring `process`; ordinary
-//! extension calls and unrelated VM instructions perform no extra work.
+//! Every extension can link the import when the host feature is present; individual
+//! requests still follow the process-wide BT permission policy.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -11,7 +11,6 @@ use bt_extension_sdk::host_process::ProcessHost;
 use wasmtime::{Caller, Linker};
 use wasmtime_wasi::p1::WasiP1Ctx;
 
-use crate::extensions::manifest::ExtensionPermissions;
 use crate::permission::{self, Capability};
 
 /// Largest accepted request, before reading or parsing guest memory.
@@ -19,15 +18,11 @@ const MAX_REQUEST: usize = 64 * 1024;
 /// Required response capacity, covering worst-case JSON escaping of bounded pipes.
 const RESPONSE_CAPACITY: usize = 16 * 1024 * 1024;
 
-/// Installs the generic process import without adding state to unprivileged stores.
+/// Installs the generic process import for every WASI extension runtime.
 pub(crate) fn add_to_linker(
     linker: &mut Linker<WasiP1Ctx>,
     project_root: &Path,
-    permissions: ExtensionPermissions,
 ) -> Result<(), String> {
-    if !permissions.process {
-        return Ok(());
-    }
     let host = Arc::new(Mutex::new(ProcessHost::new(project_root.to_path_buf())?));
     linker
         .func_wrap(
@@ -66,7 +61,7 @@ pub(crate) fn add_to_linker(
                 {
                     return -3;
                 }
-                let result = execute_request(&host, permissions, &request);
+                let result = execute_request(&host, &request);
                 let envelope = match result {
                     Ok(value) => serde_json::json!({"ok": value}),
                     Err(error) => serde_json::json!({"error": error}),
@@ -88,12 +83,8 @@ pub(crate) fn add_to_linker(
     Ok(())
 }
 
-/// Checks current process permissions and validates declared filesystem path lists.
-fn execute_request(
-    host: &Mutex<ProcessHost>,
-    permissions: ExtensionPermissions,
-    bytes: &[u8],
-) -> Result<serde_json::Value, String> {
+/// Checks process-wide capabilities before dispatching a native process request.
+fn execute_request(host: &Mutex<ProcessHost>, bytes: &[u8]) -> Result<serde_json::Value, String> {
     let request: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|error| format!("Invalid process request JSON: {error}"))?;
     // Releasing already-owned resources remains possible after permission revocation.
@@ -104,21 +95,12 @@ fn execute_request(
         permission::check(Capability::Process)?;
     }
     if request.get("op").and_then(|value| value.as_str()) == Some("spawn") {
-        for (field, allowed) in [
-            ("read_paths", permissions.fs_read),
-            ("write_paths", permissions.fs_write),
-            ("cleanup_paths", permissions.fs_write),
-        ] {
+        for field in ["read_paths", "write_paths", "cleanup_paths"] {
             if request
                 .get(field)
                 .and_then(|value| value.as_array())
                 .is_some_and(|paths| !paths.is_empty())
             {
-                if !allowed {
-                    return Err(format!(
-                        "Process request `{field}` requires a declared filesystem permission"
-                    ));
-                }
                 permission::check(Capability::Fs)?;
             }
         }
@@ -149,20 +131,15 @@ mod tests {
                 local.get 0 local.get 1 local.get 2 local.get 3 call $request))"#).unwrap()).unwrap()
     }
 
-    /// Extensions without process permission cannot link the native process import.
+    /// Every extension can link the native process import without manifest metadata.
     #[test]
-    fn undeclared_process_import_is_unavailable() {
+    fn process_import_is_available_without_manifest_permission() {
         let engine = Engine::default();
         let module = guest(&engine);
         let mut linker = Linker::new(&engine);
-        add_to_linker(
-            &mut linker,
-            &std::env::current_dir().unwrap(),
-            ExtensionPermissions::default(),
-        )
-        .unwrap();
+        add_to_linker(&mut linker, &std::env::current_dir().unwrap()).unwrap();
         let mut store = Store::new(&engine, WasiCtxBuilder::new().build_p1());
-        assert!(linker.instantiate(&mut store, &module).is_err());
+        assert!(linker.instantiate(&mut store, &module).is_ok());
     }
 
     /// Invalid ranges are rejected before dispatch; business failures use JSON envelopes.
@@ -171,11 +148,7 @@ mod tests {
         let engine = Engine::default();
         let module = guest(&engine);
         let mut linker = Linker::new(&engine);
-        let permissions = ExtensionPermissions {
-            process: true,
-            ..ExtensionPermissions::default()
-        };
-        add_to_linker(&mut linker, &std::env::current_dir().unwrap(), permissions).unwrap();
+        add_to_linker(&mut linker, &std::env::current_dir().unwrap()).unwrap();
         let mut store = Store::new(&engine, WasiCtxBuilder::new().build_p1());
         let instance = linker.instantiate(&mut store, &module).unwrap();
         let request = instance
@@ -197,5 +170,29 @@ mod tests {
         memory.read(&store, 65536, &mut output).unwrap();
         let envelope: serde_json::Value = serde_json::from_slice(&output).unwrap();
         assert!(envelope["error"].is_string());
+    }
+
+    /// Process-wide policy remains the only authorization boundary for native jobs.
+    #[test]
+    fn process_request_respects_process_wide_policy() {
+        let host = Mutex::new(ProcessHost::new(std::env::current_dir().unwrap()).unwrap());
+        permission::with_test_config(None, Some("process"), || {
+            let error = execute_request(&host, br#"{"op":"poll","id":1}"#).unwrap_err();
+            assert!(error.contains("capability `process` is disabled"));
+        });
+    }
+
+    /// Path ownership metadata uses the process-wide filesystem policy, not a manifest field.
+    #[test]
+    fn process_paths_respect_process_wide_filesystem_policy() {
+        let host = Mutex::new(ProcessHost::new(std::env::current_dir().unwrap()).unwrap());
+        permission::with_test_config(None, Some("fs"), || {
+            let error = execute_request(
+                &host,
+                br#"{"op":"spawn","program":"unused","read_paths":["input.txt"]}"#,
+            )
+            .unwrap_err();
+            assert!(error.contains("capability `fs` is disabled"));
+        });
     }
 }
