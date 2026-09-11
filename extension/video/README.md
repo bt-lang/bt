@@ -1,8 +1,10 @@
-# BT video extension 1.0.0
+# Video extension 1.0.0
 
-Independent `kind=wasm` official extension for asynchronous local-file video work. Install only when needed. It does not depend on the image or SQLite extensions. FFmpeg and ffprobe must be installed on the host's PATH; no FFmpeg executable or codec library is included or downloaded by this package. The tested backend is FFmpeg 8.1.1 on Windows x64. The WASI module builds independently. Linux and macOS are intended host targets, but their end-to-end behavior has not been verified. This extension requires a BT build with the optional `bts_host.process_request` import added alongside this extension; previously released BT 1.1.4 binaries lack that import despite satisfying the manifest's minimum version number.
+## Function
 
-## API
+Independent `kind=wasm` official extension for asynchronous local-file video work. Install only when needed. It does not depend on the image or SQLite extensions. FFmpeg and ffprobe must be installed on the host's PATH; no FFmpeg executable or codec library is included or downloaded by this package. The tested backend is FFmpeg 8.1.1 on Windows x64. The WASI module builds independently. Linux and macOS are intended host targets, but their end-to-end behavior has not been verified. The registry package uses the current post-1.1.4 extension manifest format and requires the optional `bts_host.process_request` import. The public BT 1.1.4 release binary can neither install nor run it; use an updated `main` build or the next numbered BT release.
+
+## Syntax, parameters and return values
 
 All names use snake_case. Every processing method returns a `VideoJob` immediately; decoding and encoding execute in bounded native background processes. `info()` is also asynchronous. Pass `{}` for default option objects. `video` is the sole global entry point; use names such as `clip` or `source` for the returned object so that a local variable does not shadow the entry function.
 
@@ -142,7 +144,7 @@ Use `clip.frame('@/frame.png', 0.5)`, poll to success, then open `@/frame.png` w
 
 ## Build and verification
 
-From this directory, `build.ps1 -BtExe <path-to-current-bt.exe>` builds with the locked WASI dependencies, stages only runtime files and licenses under `target/`, creates `video-1.0.0.bts`, then checks it. The `.bts` is independently versioned. `verify.ps1 -BtExe <path> -Package <package>` creates an independent project under `target/`, installs the package and runs `smoke.bt` against generated test media, then independently decodes and probes its outputs. The scripts require ffmpeg and ffprobe on PATH. They do not commit, publish, download codecs or upload files.
+From the extension/video directory, `build.ps1 -BtExe <path-to-current-bt.exe>` builds with the locked WASI dependencies, stages only runtime files and licenses under `target/`, creates `video-1.0.0.bts`, then checks it. The `.bts` is independently versioned. `verify.ps1 -BtExe <path> -Package <package>` creates an independent project under `target/`, installs the package and runs `smoke.bt` against generated test media, then independently decodes and probes its outputs. The scripts require ffmpeg and ffprobe on PATH. They do not commit, publish, download codecs or upload files.
 
 ```powershell
 cargo test --locked --manifest-path extension/video/Cargo.toml -- --test-threads=1

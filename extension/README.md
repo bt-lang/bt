@@ -2,11 +2,13 @@
 
 This directory contains independently built and versioned official BT extension libraries. Each extension owns its source, tests, package manifest, bindings, locked dependencies, and license notices.
 
-| Extension | Purpose |
-|---|---|
-| [SQLite](sqlite/README.md) | SQLite file databases with chained queries, parameter binding, and transactions. |
-| [Image](image/README.md) | Bounded image objects, conversion, geometry, watermarks, and color adjustments. |
-| [Video](video/README.md) | Asynchronous FFmpeg jobs for probing, editing, frames, and audio tracks. |
+| Extension | Simplified Chinese | Purpose |
+|---|---|---|
+| [SQLite](sqlite/README.md) | [简体中文](sqlite/README.zh-CN.md) | SQLite file databases with chained queries, parameter binding, and transactions. |
+| [Image](image/README.md) | [简体中文](image/README.zh-CN.md) | Bounded image objects, conversion, geometry, watermarks, and color adjustments. |
+| [Video](video/README.md) | [简体中文](video/README.zh-CN.md) | Asynchronous FFmpeg jobs for probing, editing, frames, and audio tracks. |
+
+Each extension's `README.md` and `README.zh-CN.md` are the only maintained documentation sources for that extension. The website publishes immutable copies for an exact extension version; later changes on `main` do not alter the website until the developer publishes another version.
 
 The SDK lives in `crates/bt-extension-sdk/`, and the host loader and runners live in `src/extensions/`. A BT application's `extensions/` directory holds installed `.bts` packages; this repository's `extension/` directory holds their source.
 

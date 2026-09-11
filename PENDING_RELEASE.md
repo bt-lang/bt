@@ -9,6 +9,10 @@ official website update page, then restore this file to this empty template.
 
 <!-- Add dated release-note entries here. -->
 
+### 2026-09-11
+
+- Official extensions now maintain their English and Simplified Chinese README files only beside the source in `extension/<name>/`. Publishing an extension copies those files into an immutable website snapshot for the exact extension version, so later documentation changes on `main` do not alter the website until another version is published. Public source validation requires both language files.
+
 ### 2026-09-08
 
 - Official SQLite extension source now lives in `extension/sqlite/`. Build and
@@ -41,6 +45,10 @@ official website update page, then restore this file to this empty template.
 ## 简体中文
 
 <!-- 在此添加带日期的待发布说明。 -->
+
+### 2026-09-11
+
+- 官方扩展现在只在 `extension/<name>/` 源码旁维护英文和简体中文 README。发布扩展时把这些文件复制为该扩展精确版本的官网不可变快照，因此 `main` 上后续发生的文档变化不会影响官网，直到开发者发布另一个版本。公开源码校验要求同时包含两种语言文件。
 
 ### 2026-09-08
 

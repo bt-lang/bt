@@ -100,6 +100,7 @@ $requiredFiles = @(
     "extension/sqlite/LICENSE-APACHE",
     "extension/sqlite/LICENSE-MIT",
     "extension/sqlite/README.md",
+    "extension/sqlite/README.zh-CN.md",
     "extension/sqlite/bindings.json",
     "extension/sqlite/manifest.json",
     "extension/sqlite/src/lib.rs",
@@ -107,7 +108,7 @@ $requiredFiles = @(
     "extension/sqlite/THIRD_PARTY_LICENSES.txt"
 )
 foreach ($extensionName in @("image", "video")) {
-    foreach ($extensionFile in @("Cargo.toml", "Cargo.lock", "manifest.json", "bindings.json", "README.md", "COPYRIGHT", "LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY_LICENSES.txt", "build.ps1", "verify.ps1", "smoke.bt", "src/lib.rs", "src/tests.rs")) {
+    foreach ($extensionFile in @("Cargo.toml", "Cargo.lock", "manifest.json", "bindings.json", "README.md", "README.zh-CN.md", "COPYRIGHT", "LICENSE-MIT", "LICENSE-APACHE", "THIRD_PARTY_LICENSES.txt", "build.ps1", "verify.ps1", "smoke.bt", "src/lib.rs", "src/tests.rs")) {
         $requiredFiles += "extension/$extensionName/$extensionFile"
     }
 }

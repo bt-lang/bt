@@ -1,6 +1,10 @@
-# BT image extension
+# Image extension
+
+## Function
 
 Version **1.0.0** is an independently built and installed `kind=wasm` extension. It decodes, transforms and encodes still images in a bounded shared WASI worker. The extension does not require the video extension or an external graphics program.
+
+The registry package uses the current post-1.1.4 extension manifest format. The public BT 1.1.4 release binary rejects this format; install it with an updated `main` build or the next numbered BT release.
 
 ## Formats and color rules
 
@@ -15,7 +19,7 @@ Decoding detects file contents, not the filename extension. Output format is an 
 
 All retained pixels use **8-bit straight-alpha RGBA**, interpreted as sRGB. ICC profiles, EXIF orientation, metadata and high-bit-depth precision are not preserved or applied. Rotate explicitly if orientation correction is required. Filtered resizing temporarily premultiplies alpha to avoid transparent color fringes; interpolation and compositing use encoded sRGB, not linear light. Alpha is unchanged by color adjustment. Watermarks use Porter-Duff source-over.
 
-## API
+## Syntax, parameters and return values
 
 The only global entry is `image(path)`. It creates a lightweight object bound to a project path without reading image contents or creating the file. The host still normalizes the `path_write` argument and checks process policy, project boundaries and the existing parent directory during binding. Pixel operations (`info`, `resize`, `crop`, `rotate`, watermarks, `text`, `adjust`, `save`, `encode` and `pixel`) load that path on their first use; subsequent calls reuse the pixels. A missing or malformed input fails when a pixel operation needs to load it, and a failed load can be retried. `create` and `decode` instead establish or replace pixels directly, even if the bound file is missing or malformed. Both preserve the same object and bound path; invalid input or an exceeded pixel budget leaves the previous pixels unchanged. Neither operation writes a file. Only explicit `save(path, format, options)` writes, and saving does not change the bound path. `close()` also releases an object that has never loaded pixels.
 
@@ -23,7 +27,7 @@ All parameters shown below are required; pass `{}` for default options. All coor
 
 | Call | Parameters and behavior | Result |
 |---|---|---|
-| `image(path)` | Bind a project path, normalized by the host with `path_write`; 1..4096 UTF-8 bytes, parent directory must exist. The image file may be absent. No image content is read or written; host path and permission checks still apply. | Image |
+| `image(path)` | Bind a project path, normalized by the host with `path_write`; 1..4096 UTF-8 bytes, parent directory must exist. The image file may be absent. No image content is read or written; host path and process-policy checks still apply. | Image |
 | `img.decode(data)` | Replace pixels from encoded BT Bytes, up to 16,777,152 bytes. Does not read the bound file. | same Image |
 | `img.create(width, height, color)` | Replace pixels with a solid canvas; positive dimensions; `color` is `[r,g,b,a]`, four integers 0..255. Does not read the bound file. | same Image |
 | `img.info()` | Inspect dimensions and representation; fields below. | object |
@@ -96,7 +100,7 @@ source.crop(0, 0, 100, 80).rotate(90)
 source.close()
 ```
 
-File access is restricted by the host's project preopen and BT permission checks. `path_read` and `path_write` are explicitly declared in the bindings. No filesystem path is hidden inside an options object. A failed lookup such as `pixel(-1,0)` returns `empty`; processing failures are errors, not ambiguous `null` values.
+File access follows the host's project preopen and BT process-wide policy. `path_read` and `path_write` are explicitly declared in the bindings. No filesystem path is hidden inside an options object. A failed lookup such as `pixel(-1,0)` returns `empty`; processing failures are errors, not ambiguous `null` values.
 
 ## Resources and execution
 
