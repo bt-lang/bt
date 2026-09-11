@@ -3,8 +3,23 @@
   "format_version": 1,
   "name": "sqlite",
   "version": "1.0.0",
-  "description": "BT SQLite extension library",
+  "summary": "SQLite file database extension",
+  "description": "Provides sqlite_open, chained query().bind().one/all/exec operations, bulk writes with binds, transactions, and explicit connection cleanup.",
   "author": "Lifeng Yan",
+  "developer": {
+    "id": "bt_official",
+    "name": "BT Official",
+    "homepage": "https://btlang.org"
+  },
+  "repository": "https://github.com/bt-lang/bt/tree/main/extension/sqlite",
+  "license": "MIT OR Apache-2.0",
+  "locales": {
+    "zh-CN": {
+      "summary": "SQLite 文件数据库扩展",
+      "description": "提供 sqlite_open、query().bind().one/all/exec、binds 批量写入、transaction 和连接释放等 SQLite 能力。",
+      "developer_name": "BT 官方"
+    }
+  },
   "kind": "wasm",
   "abi": "bts-wasi-1",
   "bt_min_version": "1.1.1",

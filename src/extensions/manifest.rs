@@ -1,5 +1,7 @@
 //! Parsing and validation for `.bts` extension package manifests.
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 
 use crate::extensions::is_lower_identifier;
@@ -65,9 +67,24 @@ pub struct ExtensionManifest {
     /// Extension description text.
     #[serde(default)]
     pub description: Option<String>,
+    /// Short extension summary used by catalogs and tooling.
+    #[serde(default)]
+    pub summary: Option<String>,
     /// Extension author text.
     #[serde(default)]
     pub author: Option<String>,
+    /// Public extension developer or publisher identity.
+    #[serde(default)]
+    pub developer: Option<ExtensionDeveloper>,
+    /// Public source repository URL.
+    #[serde(default)]
+    pub repository: Option<String>,
+    /// SPDX license expression for the extension package.
+    #[serde(default)]
+    pub license: Option<String>,
+    /// Localized display metadata keyed by normalized BCP 47 language tag.
+    #[serde(default)]
+    pub locales: BTreeMap<String, ExtensionLocaleMetadata>,
     /// Extension backend type.
     pub kind: ExtensionKind,
     /// Extension ABI name, which must match the backend type.
@@ -86,6 +103,34 @@ pub struct ExtensionManifest {
     /// Extension runtime mode and shared runtime resource configuration.
     #[serde(default)]
     pub runtime: ExtensionRuntime,
+}
+
+/// Public developer identity carried with an extension package.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ExtensionDeveloper {
+    /// Stable lowercase developer identifier.
+    pub id: String,
+    /// Default developer display name.
+    pub name: String,
+    /// Optional public developer homepage.
+    #[serde(default)]
+    pub homepage: Option<String>,
+}
+
+/// Localized extension display metadata that never changes API identifiers.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ExtensionLocaleMetadata {
+    /// Localized short summary.
+    #[serde(default)]
+    pub summary: Option<String>,
+    /// Localized full description.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Localized developer display name.
+    #[serde(default)]
+    pub developer_name: Option<String>,
 }
 
 /// Extension backend type.
@@ -240,8 +285,48 @@ impl ExtensionManifest {
         if let Some(description) = &self.description {
             validate_text_field("manifest.description", description)?;
         }
+        if let Some(summary) = &self.summary {
+            validate_text_field("manifest.summary", summary)?;
+        }
         if let Some(author) = &self.author {
             validate_text_field("manifest.author", author)?;
+        }
+        if let Some(developer) = &self.developer {
+            validate_name_field("manifest.developer.id", &developer.id)?;
+            if !is_lower_identifier(&developer.id) {
+                return Err("manifest.developer.id must be a lowercase identifier".to_string());
+            }
+            validate_text_field("manifest.developer.name", &developer.name)?;
+            if let Some(homepage) = &developer.homepage {
+                validate_text_field("manifest.developer.homepage", homepage)?;
+            }
+        }
+        if let Some(repository) = &self.repository {
+            validate_text_field("manifest.repository", repository)?;
+        }
+        if let Some(license) = &self.license {
+            validate_text_field("manifest.license", license)?;
+        }
+        if self.locales.len() > 16 {
+            return Err("manifest.locales may contain at most 16 languages".to_string());
+        }
+        for (locale, metadata) in &self.locales {
+            validate_locale_tag(locale)?;
+            if let Some(summary) = &metadata.summary {
+                validate_text_field(&format!("manifest.locales.{}.summary", locale), summary)?;
+            }
+            if let Some(description) = &metadata.description {
+                validate_text_field(
+                    &format!("manifest.locales.{}.description", locale),
+                    description,
+                )?;
+            }
+            if let Some(developer_name) = &metadata.developer_name {
+                validate_text_field(
+                    &format!("manifest.locales.{}.developer_name", locale),
+                    developer_name,
+                )?;
+            }
         }
         if self.abi != self.kind.expected_abi() {
             return Err(format!(
@@ -378,6 +463,33 @@ fn validate_name_field(field: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate a canonical-cased BCP 47 language tag used as a localization key.
+fn validate_locale_tag(value: &str) -> Result<(), String> {
+    let parts: Vec<&str> = value.split('-').collect();
+    let language_valid = parts.first().is_some_and(|part| {
+        (2..=3).contains(&part.len()) && part.bytes().all(|byte| byte.is_ascii_lowercase())
+    });
+    let subtags_valid = parts.iter().skip(1).all(|part| match part.len() {
+        2 => part.bytes().all(|byte| byte.is_ascii_uppercase()),
+        3 => part.bytes().all(|byte| byte.is_ascii_digit()),
+        4 => {
+            let bytes = part.as_bytes();
+            bytes[0].is_ascii_uppercase() && bytes[1..].iter().all(|byte| byte.is_ascii_lowercase())
+        }
+        5..=8 => part
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit()),
+        _ => false,
+    });
+    if value.len() > 35 || !language_valid || !subtags_valid {
+        return Err(format!(
+            "manifest.locales key `{}` must be a canonical-cased BCP 47 language tag",
+            value
+        ));
+    }
+    Ok(())
+}
+
 /// Validate that a version field is a three-part SemVer.
 fn validate_version_field(field: &str, value: &str) -> Result<(), String> {
     parse_semver_triplet(value)
@@ -458,8 +570,23 @@ mod tests {
             "format_version": 1,
             "name": "calc",
             "version": "1.0.0",
+            "summary": "Calculator extension",
             "description": "BT extension loader verification package",
             "author": "BT Team",
+            "developer": {
+                "id": "bt_team",
+                "name": "BT Team",
+                "homepage": "https://btlang.org"
+            },
+            "repository": "https://github.com/bt-lang/bt",
+            "license": "MIT OR Apache-2.0",
+            "locales": {
+                "zh-CN": {
+                    "summary": "计算器扩展",
+                    "description": "用于测试的计算器扩展。",
+                    "developer_name": "BT 团队"
+                }
+            },
             "kind": "bt",
             "abi": "bts-bt-1",
             "bt_min_version": "1.1.0",
@@ -498,8 +625,21 @@ mod tests {
         let manifest = ExtensionManifest::parse(&valid_manifest_json()).unwrap();
         assert_eq!(manifest.name, "calc");
         assert_eq!(manifest.kind, ExtensionKind::Bt);
+        assert_eq!(manifest.summary.as_deref(), Some("Calculator extension"));
+        assert_eq!(
+            manifest.locales["zh-CN"].summary.as_deref(),
+            Some("计算器扩展")
+        );
         assert_eq!(manifest.runtime.mode, ExtensionRuntimeMode::ThreadLocal);
         assert_eq!(manifest.runtime.workers, DEFAULT_RUNTIME_WORKERS);
+    }
+
+    /// Locale keys must use canonical casing so package and registry lookups are deterministic.
+    #[test]
+    fn rejects_non_canonical_locale_tag() {
+        let raw = valid_manifest_json().replace("\"zh-CN\"", "\"zh-cn\"");
+        let error = ExtensionManifest::parse(&raw).unwrap_err();
+        assert!(error.contains("canonical-cased BCP 47"));
     }
 
     /// Removed package-level permission metadata must be rejected as an unknown field.

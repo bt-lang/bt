@@ -7,6 +7,8 @@ official website update page, then restore this file to this empty template.
 
 ## English
 
+- 2026-09-11: Extension manifests can now carry catalog summaries, public developer identity, repository, SPDX license, and localized display metadata with canonical BCP 47 keys such as `zh-CN`. Official extension releases use the committed `manifest.json`, `bindings.json`, `README.md`, and `README.zh-CN.md` as the only maintained metadata and documentation sources for website publication and editor tooling.
+
 <!-- Add dated release-note entries here. -->
 
 ### 2026-09-11
@@ -43,6 +45,8 @@ official website update page, then restore this file to this empty template.
   preserving the distinction from explicit `null`.
 
 ## 简体中文
+
+- 2026-09-11：扩展 manifest 现在可以携带目录摘要、公开开发者身份、源码仓库、SPDX 许可证以及使用 `zh-CN` 等规范 BCP 47 键的本地化展示元数据。官方扩展发布使用已提交的 `manifest.json`、`bindings.json`、`README.md` 和 `README.zh-CN.md` 作为官网发布与编辑器工具唯一需要维护的元数据和文档源。
 
 <!-- 在此添加带日期的待发布说明。 -->
 

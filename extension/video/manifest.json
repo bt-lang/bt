@@ -3,8 +3,23 @@
   "format_version": 1,
   "name": "video",
   "version": "1.0.0",
-  "description": "Bounded asynchronous file video processing with external FFmpeg",
+  "summary": "Bounded asynchronous video processing extension",
+  "description": "Uses a separately installed FFmpeg to provide probing, transcoding, trimming, concatenation, frame extraction, resizing, audio extraction and replacement, with cancellable asynchronous jobs.",
   "author": "Lifeng Yan",
+  "developer": {
+    "id": "bt_official",
+    "name": "BT Official",
+    "homepage": "https://btlang.org"
+  },
+  "repository": "https://github.com/bt-lang/bt/tree/main/extension/video",
+  "license": "MIT OR Apache-2.0",
+  "locales": {
+    "zh-CN": {
+      "summary": "有界异步视频处理扩展",
+      "description": "通过独立安装的 FFmpeg 提供探测、转码、剪辑、拼接、抽帧、缩放、音频提取与替换，以及可取消的异步任务生命周期。",
+      "developer_name": "BT 官方"
+    }
+  },
   "kind": "wasm",
   "abi": "bts-wasi-1",
   "bt_min_version": "1.1.4",
