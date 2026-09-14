@@ -29,6 +29,7 @@ commands.allow = [
   "app_reveal_path",
   "app_quit",
   "app_args",
+  "app_take_open_requests",
   "app_documents_dir",
   "app_watch_path",
   "app_unwatch_path",

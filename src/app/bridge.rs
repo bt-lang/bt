@@ -379,6 +379,12 @@ pub fn script(enable_refresh_shortcuts: bool, enable_devtools_shortcuts: bool) -
       args() {
         return invoke("app_args");
       },
+      take_open_requests() {
+        return invoke("app_take_open_requests");
+      },
+      on_open_request(callback) {
+        return listenTauri("bt://app/open_request", callback, (payload) => payload);
+      },
       documents_dir() {
         return invoke("app_documents_dir");
       },

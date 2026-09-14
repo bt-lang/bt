@@ -7,6 +7,8 @@ official website update page, then restore this file to this empty template.
 
 ## English
 
+- 2026-09-14: Windows packaged apps can opt into `app.single_instance` to forward later launches and file paths to the existing window through a bounded request queue. The frontend can drain queued arguments and listen for later requests. File associations are registered only on launches without file arguments, and Explorer is refreshed only when registry values change.
+
 - 2026-09-11: Extension manifests can now carry catalog summaries, public developer identity, repository, SPDX license, and localized display metadata with canonical BCP 47 keys such as `zh-CN`. Official extension releases use the committed `manifest.json`, `bindings.json`, `README.md`, and `README.zh-CN.md` as the only maintained metadata and documentation sources for website publication and editor tooling.
 
 <!-- Add dated release-note entries here. -->
@@ -45,6 +47,8 @@ official website update page, then restore this file to this empty template.
   preserving the distinction from explicit `null`.
 
 ## 简体中文
+
+- 2026-09-14：Windows 打包应用可启用 `app.single_instance`，把后续启动和文件路径转交已有窗口，并通过有界请求队列供前端读取和监听。文件关联仅在不带文件参数的启动时注册，且只在注册表内容发生变化时通知资源管理器刷新。
 
 - 2026-09-11：扩展 manifest 现在可以携带目录摘要、公开开发者身份、源码仓库、SPDX 许可证以及使用 `zh-CN` 等规范 BCP 47 键的本地化展示元数据。官方扩展发布使用已提交的 `manifest.json`、`bindings.json`、`README.md` 和 `README.zh-CN.md` 作为官网发布与编辑器工具唯一需要维护的元数据和文档源。
 

@@ -5,6 +5,8 @@ use crate::app::starter::CreateProjectInput;
 use crate::permission::{self, Capability};
 use serde_json::{json, Value as JsonValue};
 use std::path::PathBuf;
+#[cfg(windows)]
+use tauri::Manager;
 use tauri::{AppHandle, State, WebviewWindow};
 
 /// Call a BT function registered in `main.bt`.
@@ -777,6 +779,23 @@ pub fn app_quit(app: AppHandle) -> Result<(), String> {
 pub fn app_args(state: State<AppState>) -> Result<Vec<String>, String> {
     require_desktop_permission()?;
     api::app::args(&state)
+}
+
+/// Drain launch requests forwarded from later packaged-app invocations.
+#[tauri::command]
+pub fn app_take_open_requests(app: AppHandle) -> Result<Vec<Vec<String>>, String> {
+    require_desktop_permission()?;
+    #[cfg(windows)]
+    {
+        return Ok(app
+            .state::<crate::app::single_instance::OpenRequests>()
+            .take());
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Ok(Vec::new())
+    }
 }
 
 /// Return the user's Documents known folder as resolved by the operating system.

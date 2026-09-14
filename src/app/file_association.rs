@@ -20,22 +20,24 @@ pub fn register_btr_runtime() -> Result<(), BtError> {
     let command = format!("\"{}\" run \"%1\"", executable);
     let icon = format!("\"{}\",0", executable);
 
-    set_default_value(r"Software\Classes\.btr", prog_id)?;
-    set_named_value(r"Software\Classes\.btr\OpenWithProgids", prog_id, "")?;
-    set_default_value(&format!(r"Software\Classes\{}", prog_id), "BT BTR App")?;
-    set_default_value(&format!(r"Software\Classes\{}\DefaultIcon", prog_id), &icon)?;
-    set_default_value(
+    let mut changed = set_default_value(r"Software\Classes\.btr", prog_id)?;
+    changed |= set_named_value(r"Software\Classes\.btr\OpenWithProgids", prog_id, "")?;
+    changed |= set_default_value(&format!(r"Software\Classes\{}", prog_id), "BT BTR App")?;
+    changed |= set_default_value(&format!(r"Software\Classes\{}\DefaultIcon", prog_id), &icon)?;
+    changed |= set_default_value(
         &format!(r"Software\Classes\{}\shell\open\command", prog_id),
         &command,
     )?;
 
-    unsafe {
-        SHChangeNotify(
-            SHCNE_ASSOCCHANGED as i32,
-            SHCNF_IDLIST,
-            std::ptr::null(),
-            std::ptr::null(),
-        );
+    if changed {
+        unsafe {
+            SHChangeNotify(
+                SHCNE_ASSOCCHANGED as i32,
+                SHCNF_IDLIST,
+                std::ptr::null(),
+                std::ptr::null(),
+            );
+        }
     }
     Ok(())
 }
@@ -64,6 +66,7 @@ pub fn register(config: &AppJson) -> Result<(), BtError> {
     let app_id = registry_id_fragment(config.app.identity_key());
     let verb_id = format!("BTApp.{}", app_id);
 
+    let mut changed = false;
     for (association_index, association) in config.app.file_associations.iter().enumerate() {
         let description = association
             .description
@@ -82,18 +85,19 @@ pub fn register(config: &AppJson) -> Result<(), BtError> {
         for extension in &association.extensions {
             let dotted_extension = format!(".{}", extension);
             let prog_id = format!("BTApp.{}.{}", app_id, extension);
-            set_default_value(&format!(r"Software\Classes\{}", dotted_extension), &prog_id)?;
-            set_named_value(
+            changed |=
+                set_default_value(&format!(r"Software\Classes\{}", dotted_extension), &prog_id)?;
+            changed |= set_named_value(
                 &format!(r"Software\Classes\{}\OpenWithProgids", dotted_extension),
                 &prog_id,
                 "",
             )?;
-            set_default_value(&format!(r"Software\Classes\{}", prog_id), &description)?;
-            set_default_value(
+            changed |= set_default_value(&format!(r"Software\Classes\{}", prog_id), &description)?;
+            changed |= set_default_value(
                 &format!(r"Software\Classes\{}\DefaultIcon", prog_id),
                 &file_type_icon,
             )?;
-            set_default_value(
+            changed |= set_default_value(
                 &format!(r"Software\Classes\{}\shell\open\command", prog_id),
                 &command,
             )?;
@@ -102,21 +106,23 @@ pub fn register(config: &AppJson) -> Result<(), BtError> {
                 r"Software\Classes\SystemFileAssociations\{}\shell\{}",
                 dotted_extension, verb_id
             );
-            set_default_value(&menu_key, &context_menu)?;
+            changed |= set_default_value(&menu_key, &context_menu)?;
             // The context-menu action means "open with the app", so keep showing the app icon instead of a document-type icon.
-            set_named_value(&menu_key, "Icon", &app_icon)?;
-            set_default_value(&format!(r"{}\command", menu_key), &command)?;
+            changed |= set_named_value(&menu_key, "Icon", &app_icon)?;
+            changed |= set_default_value(&format!(r"{}\command", menu_key), &command)?;
         }
     }
 
     // File type information is cached by Explorer; broadcast once after all writes to avoid refreshing after each extension.
-    unsafe {
-        SHChangeNotify(
-            SHCNE_ASSOCCHANGED as i32,
-            SHCNF_IDLIST,
-            std::ptr::null(),
-            std::ptr::null(),
-        );
+    if changed {
+        unsafe {
+            SHChangeNotify(
+                SHCNE_ASSOCCHANGED as i32,
+                SHCNF_IDLIST,
+                std::ptr::null(),
+                std::ptr::null(),
+            );
+        }
     }
     Ok(())
 }
@@ -156,23 +162,23 @@ fn registry_id_fragment(name: &str) -> String {
 
 /// Create or open a current-user registry key and write the default string value.
 #[cfg(windows)]
-fn set_default_value(subkey: &str, value: &str) -> Result<(), BtError> {
+fn set_default_value(subkey: &str, value: &str) -> Result<bool, BtError> {
     set_registry_value(subkey, None, value)
 }
 
 /// Create or open a current-user registry key and write a named string value.
 #[cfg(windows)]
-fn set_named_value(subkey: &str, name: &str, value: &str) -> Result<(), BtError> {
+fn set_named_value(subkey: &str, name: &str, value: &str) -> Result<bool, BtError> {
     set_registry_value(subkey, Some(name), value)
 }
 
 /// Write a `REG_SZ` with the Win32 Registry API and ensure every error path closes the handle.
 #[cfg(windows)]
-fn set_registry_value(subkey: &str, name: Option<&str>, value: &str) -> Result<(), BtError> {
+fn set_registry_value(subkey: &str, name: Option<&str>, value: &str) -> Result<bool, BtError> {
     use windows_sys::Win32::Foundation::ERROR_SUCCESS;
     use windows_sys::Win32::System::Registry::{
-        RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_WRITE,
-        REG_OPTION_NON_VOLATILE, REG_SZ,
+        RegCloseKey, RegCreateKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
+        KEY_READ, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ,
     };
 
     let subkey_wide = wide_null(subkey);
@@ -193,7 +199,7 @@ fn set_registry_value(subkey: &str, name: Option<&str>, value: &str) -> Result<(
             0,
             std::ptr::null(),
             REG_OPTION_NON_VOLATILE,
-            KEY_WRITE,
+            KEY_READ | KEY_WRITE,
             std::ptr::null(),
             &mut key,
             std::ptr::null_mut(),
@@ -210,6 +216,41 @@ fn set_registry_value(subkey: &str, name: Option<&str>, value: &str) -> Result<(
     let value_name = name_wide
         .as_ref()
         .map_or(std::ptr::null(), |wide| wide.as_ptr());
+    let mut existing_type = 0u32;
+    let mut existing_len = 0u32;
+    let query_status = unsafe {
+        RegQueryValueExW(
+            key,
+            value_name,
+            std::ptr::null(),
+            &mut existing_type,
+            std::ptr::null_mut(),
+            &mut existing_len,
+        )
+    };
+    if query_status == ERROR_SUCCESS && existing_type == REG_SZ && existing_len == byte_len {
+        let mut existing = vec![0u8; existing_len as usize];
+        let read_status = unsafe {
+            RegQueryValueExW(
+                key,
+                value_name,
+                std::ptr::null(),
+                &mut existing_type,
+                existing.as_mut_ptr(),
+                &mut existing_len,
+            )
+        };
+        if read_status == ERROR_SUCCESS
+            && existing_len == byte_len
+            && existing
+                .chunks_exact(2)
+                .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
+                .eq(value_wide.iter().copied())
+        {
+            unsafe { RegCloseKey(key) };
+            return Ok(false);
+        }
+    }
     let write_status = unsafe {
         RegSetValueExW(
             key,
@@ -230,7 +271,7 @@ fn set_registry_value(subkey: &str, name: Option<&str>, value: &str) -> Result<(
             write_status,
         ));
     }
-    Ok(())
+    Ok(true)
 }
 
 /// Build a file-association error with a system error code.

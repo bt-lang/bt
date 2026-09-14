@@ -622,6 +622,7 @@ mod tests {
                 icon: None,
                 storage: "app".to_string(),
                 file_associations: Vec::new(),
+                single_instance: false,
                 main: AppMain::File("main.bt".to_string()),
             },
             window: WindowConfig {

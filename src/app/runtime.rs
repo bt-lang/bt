@@ -115,8 +115,25 @@ pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), B
         }
     };
 
+    #[cfg(windows)]
+    let (instance_guard, pipe_name) =
+        if runtime.source == AppSource::EmbeddedExe && runtime.config.app.single_instance {
+            match crate::app::single_instance::claim_or_forward(&runtime.app_args)? {
+                Some((guard, name)) => (Some(guard), Some(name)),
+                None => return Ok(()),
+            }
+        } else {
+            (None, None)
+        };
+    #[cfg(windows)]
+    let _instance_guard = instance_guard;
+    #[cfg(windows)]
+    let open_requests = crate::app::single_instance::OpenRequests::default();
+    #[cfg(not(windows))]
+    let open_requests = ();
+
     crate::app::console::configure_app_console(runtime.config.dev.console);
-    if runtime.source == AppSource::EmbeddedExe {
+    if runtime.source == AppSource::EmbeddedExe && runtime.app_args.is_empty() {
         crate::app::file_association::register(&runtime.config)?;
     }
     print_start_summary(&runtime);
@@ -221,6 +238,7 @@ pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), B
             crate::app::commands::app_reveal_path,
             crate::app::commands::app_quit,
             crate::app::commands::app_args,
+            crate::app::commands::app_take_open_requests,
             crate::app::commands::app_documents_dir,
             crate::app::commands::app_watch_path,
             crate::app::commands::app_unwatch_path,
@@ -231,6 +249,7 @@ pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), B
         .manage(crate::app::api::production::ProductionState::new())
         .manage(crate::app::api::screen::ScreenState::new())
         .manage(crate::app::api::shortcut::ShortcutState::new())
+        .manage(open_requests.clone())
         .manage(state)
         .setup(move |app| {
             let dev_reload_enabled = app.state::<AppState>().dev_reload;
@@ -248,6 +267,14 @@ pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), B
             }
             if dev_reload_enabled {
                 crate::app::dev::start_dev_watcher(app.handle().clone());
+            }
+            #[cfg(windows)]
+            if let Some(name) = pipe_name.clone() {
+                crate::app::single_instance::start_listener(
+                    name,
+                    app.handle().clone(),
+                    open_requests.clone(),
+                )?;
             }
             Ok(())
         })

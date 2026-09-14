@@ -83,6 +83,10 @@ pub struct AppInfo {
     #[serde(default)]
     pub file_associations: Vec<FileAssociationConfig>,
 
+    /// Reuse the running packaged application and forward later launch arguments to its main window.
+    #[serde(default)]
+    pub single_instance: bool,
+
     /// BT main script run once at startup to register functions callable from JavaScript.
     #[serde(
         default,
@@ -252,6 +256,7 @@ impl Default for AppInfo {
             icon: None,
             storage: default_app_storage(),
             file_associations: Vec::new(),
+            single_instance: false,
             main: AppMain::Auto,
         }
     }
@@ -986,6 +991,23 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("app.storage must be app, private, or global"));
+    }
+
+    /// Packaged apps opt into launch forwarding explicitly; existing app.json files remain multi-instance.
+    #[test]
+    fn single_instance_defaults_off_and_accepts_opt_in() {
+        assert!(
+            !load_app_json_from_str(r#"{"app":{"name":"Demo"}}"#)
+                .unwrap()
+                .app
+                .single_instance
+        );
+        assert!(
+            load_app_json_from_str(r#"{"app":{"name":"Demo","single_instance":true}}"#)
+                .unwrap()
+                .app
+                .single_instance
+        );
     }
 
     /// File association extensions lose leading dots, are lowercased, and are deduplicated.

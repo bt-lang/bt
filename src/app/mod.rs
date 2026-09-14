@@ -19,6 +19,8 @@ pub mod protocol;
 pub mod resource;
 pub mod runtime;
 pub mod server;
+#[cfg(windows)]
+pub mod single_instance;
 pub mod starter;
 pub mod vm_bridge;
 pub mod window;

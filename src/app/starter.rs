@@ -114,6 +114,7 @@ pub fn default_starter_config() -> AppJson {
             icon: None,
             storage: "app".to_string(),
             file_associations: Vec::new(),
+            single_instance: false,
             main: AppMain::Disabled,
         },
         window: WindowConfig {
@@ -175,6 +176,7 @@ pub fn create_project(
             icon: None,
             storage: "app".to_string(),
             file_associations: Vec::new(),
+            single_instance: false,
             main: AppMain::File("main.bt".to_string()),
         },
         window: WindowConfig {
