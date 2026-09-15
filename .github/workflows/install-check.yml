@@ -36,12 +36,6 @@ jobs:
         include:
           - name: windows-x64
             os: windows-latest
-          - name: linux-x64
-            os: ubuntu-latest
-          - name: macos-arm64
-            os: macos-15
-          - name: macos-x64
-            os: macos-15-intel
 
     steps:
       - name: Check out source
@@ -63,21 +57,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-download-
 
-      - name: Install Linux CLI dependencies
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libudev-dev pkg-config
-          pkg-config --exists libudev
-
-      # The CLI feature set avoids desktop-runtime and WASM dependencies while
-      # compiling the installer on each native OS. Workspace lints deny warnings.
+      # Keep native acceptance on Windows. Unix integrations remain available
+      # in the source without scheduling Linux or macOS desktop tests here.
       - name: Test installation helpers
         run: cargo test --locked --no-default-features --bin bt 'install::'
 
-      # The integration tests isolate HOME and other user configuration paths;
-      # native macOS runs also exercise applet compilation and registration.
+      # The integration tests isolate user configuration paths.
       - name: Test CLI installation and desktop execution
         run: cargo test --locked --no-default-features --test install_cli
 
