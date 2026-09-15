@@ -84,6 +84,7 @@ chrono = "0.4.44"
 serde = { version = "1.0.211", features = ["derive"] }
 serde_json = "1.0.132"
 serde_regex = "1.1.0"
+semver = "1.0.28"
 glob = "0.3"
 zip = { version = "2.4.2", default-features = false, features = ["deflate"], optional = true }
 wasmparser = { version = "0.251.0", default-features = false, features = ["std"], optional = true }

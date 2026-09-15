@@ -62,6 +62,18 @@ Run the basic desktop example:
 cargo run --release --features desktop --bin bt-app -- run examples/desktop
 ```
 
+### Install the interpreter for your user account
+
+This feature is pending the next release. With a build containing it, run `./bt install` on Linux/macOS or `.\bt.exe install` in Windows PowerShell from the extracted directory. `--install` is an equivalent alias. At the `bt>` interactive prompt, enter `install` or `--install`. `bt install <name>` continues to install an official extension.
+
+Installation copies the current interpreter to `%USERPROFILE%\.bt\bin\bt.exe` on Windows, `~/.local/bin/bt` on Linux, or `~/.bt/bin/bt` on macOS and configures the user `PATH`. Open a new terminal afterward. Only a newer semantic version replaces an installed interpreter; the same or an older version keeps the installed binary. Running a downloaded older binary directly still uses that older binary.
+
+If Windows reports that the installed executable is in use, close programs using it and retry from the downloaded interpreter; a failed replacement preserves the installed file. The installer does not forcibly terminate programs. Correct any reported permission or manually edited shell configuration problem, then rerun `install` to finish partially completed integration.
+
+The installer also registers `.bt` files with the installed interpreter. Windows uses user file associations, Linux uses a terminal desktop launcher when a desktop session is available, and macOS generates `~/Applications/BT.app` as a Finder/Terminal helper. The ZIP still contains the independent interpreter; no separate app bundle is required in the archive. Your system may ask you to select BT as the default application once. After a script opened through this association finishes, fails, or calls `exit()`, the launcher waits for Enter without changing the source or adding `pause()`.
+
+Installation is explicit: double-clicking the interpreter, running a script, and calls from other software do not check installation, `PATH`, or installed versions. Ordinary script execution does not add an exit pause. See [environment setup](https://btlang.org/en/docs/build) for platform details.
+
 ## AI knowledge base
 
 The [BT AI Knowledge Base](https://btlang.org/ai) is the official machine-readable entry point for AI assistants and coding agents. It provides versioned guidance for BT language semantics, standard-library APIs, web and desktop development, extensions, FFI, and project constraints through a discoverable manifest and focused knowledge modules. When asking an AI tool to write, review, or explain BT code, give it this URL and ask it to load only the modules relevant to the task so that its answer follows the current BT contracts without filling the context with unrelated documentation.

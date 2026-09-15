@@ -206,6 +206,18 @@ fn print_cli_help() {
         style("Extension tools                 │").true_color(81, 94, 110)
     );
     println!(
+        "  {}  {}        {}",
+        style("│").true_color(81, 94, 110),
+        style("install").true_color(107, 155, 110).bold(),
+        style("Install or update BT            │").true_color(81, 94, 110)
+    );
+    println!(
+        "  {}  {}      {}",
+        style("│").true_color(81, 94, 110),
+        style("--install").true_color(107, 155, 110).bold(),
+        style("Alias for install               │").true_color(81, 94, 110)
+    );
+    println!(
         "  {}  {} {}",
         style("│").true_color(81, 94, 110),
         style("install <name>").true_color(107, 155, 110).bold(),
@@ -250,7 +262,18 @@ fn run_cli_command(
             Ok(true)
         }
         "install" => {
-            run_extension_install_cli(values)?;
+            run_install_command(values)?;
+            Ok(true)
+        }
+        "--install" => {
+            if !values.is_empty() {
+                return Err("Usage: bt --install (use `bt install <name>` for extensions)".into());
+            }
+            crate::install::run()?;
+            Ok(true)
+        }
+        "--open-script" => {
+            run_associated_script(values)?;
             Ok(true)
         }
         _ if allow_file_shortcut && !command.starts_with('-') => {
@@ -259,6 +282,51 @@ fn run_cli_command(
         }
         _ => Ok(false),
     }
+}
+
+/// Installs the interpreter with no arguments, preserving named extension installation.
+fn run_install_command(values: &[String]) -> Result<(), String> {
+    if values.is_empty() {
+        crate::install::run()
+    } else {
+        run_extension_install_cli(values)
+    }
+}
+
+/// Runs a desktop-associated script in a child so even abnormal termination leaves its output visible.
+fn run_associated_script(values: &[String]) -> Result<(), String> {
+    if values.len() != 1 {
+        return Err("Usage: bt --open-script <file>".into());
+    }
+    // Pass a separate argument directly to the current interpreter. Never route a
+    // script path through a shell or resolve a potentially different BT on PATH.
+    let result = (|| {
+        let script = Path::new(&values[0])
+            .canonicalize()
+            .map_err(|e| format!("Cannot open script `{}`: {e}", values[0]))?;
+        let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+        let status = std::process::Command::new(executable)
+            .arg("-c")
+            .arg(&script)
+            .current_dir(script.parent().unwrap_or_else(|| Path::new(".")))
+            .status()
+            .map_err(|e| format!("Cannot start BT script: {e}"))?;
+        if !status.success() {
+            return Err(format!("BT script process ended with {status}"));
+        }
+        Ok(())
+    })();
+    if let Err(error) = &result {
+        eprintln!("{error}");
+    }
+    println!("\nPress Enter to exit...");
+    io::stdout().flush().map_err(|e| e.to_string())?;
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| format!("Cannot wait for input: {e}"))?;
+    // The diagnostic was printed before waiting, including launch failures.
+    Ok(())
 }
 
 /// Execute the extended toolchain command after enabling the extended feature.
@@ -312,8 +380,8 @@ fn run_interactive_command(input: &str) -> Result<bool, String> {
     if let Some(command) = parts.next() {
         let values: Vec<String> = parts.map(|s| s.to_string()).collect();
         match command {
-            "install" => {
-                run_extension_install_cli(&values)?;
+            "install" | "--install" => {
+                run_cli_command(command, &values, false)?;
                 return Ok(true);
             }
             "ext" => {
@@ -382,6 +450,9 @@ pub fn main() {
             }
             Err(err) => {
                 println!("{}", style(err).red());
+                if command == "install" && values.is_empty() || command == "--install" {
+                    std::process::exit(1);
+                }
             }
         }
         return;

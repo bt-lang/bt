@@ -515,6 +515,7 @@ dependencies = [
  "salvo-session",
  "salvo_core",
  "salvo_extra",
+ "semver",
  "serde",
  "serde_json",
  "serde_regex",

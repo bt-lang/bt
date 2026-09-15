@@ -1,0 +1,87 @@
+name: Check BT User Installation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/install.rs"
+      - "src/install/**"
+      - "src/bt_cli*"
+      - "src/main.rs"
+      - "tests/install_cli.rs"
+      - "tools/quality/verify-user-install-windows.*"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - ".github/workflows/install-check.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: Installation and file opening (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+          - name: linux-x64
+            os: ubuntu-latest
+          - name: macos-arm64
+            os: macos-15
+          - name: macos-x64
+            os: macos-15-intel
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/registry/src/
+            ~/.cargo/git/db/
+            ~/.cargo/git/checkouts/
+          key: ${{ runner.os }}-cargo-download-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-download-
+
+      - name: Install Linux CLI dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev pkg-config
+          pkg-config --exists libudev
+
+      # The CLI feature set avoids desktop-runtime and WASM dependencies while
+      # compiling the installer on each native OS. Workspace lints deny warnings.
+      - name: Test installation helpers
+        run: cargo test --locked --no-default-features --bin bt 'install::'
+
+      # The integration tests isolate HOME and other user configuration paths;
+      # native macOS runs also exercise applet compilation and registration.
+      - name: Test CLI installation and desktop execution
+        run: cargo test --locked --no-default-features --test install_cli
+
+      - name: Verify isolated Windows registry installation
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tools/quality/verify-user-install-windows.ps1

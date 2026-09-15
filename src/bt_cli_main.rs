@@ -9,6 +9,7 @@ mod compiler;
 mod device;
 #[cfg(feature = "extensions")]
 mod extensions;
+mod install;
 mod io;
 mod lexer;
 mod libs;

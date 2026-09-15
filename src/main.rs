@@ -14,6 +14,7 @@ mod device;
 mod error;
 #[cfg(feature = "extensions")]
 mod extensions;
+mod install;
 mod io;
 mod lexer;
 mod libs;

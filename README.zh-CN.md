@@ -62,6 +62,18 @@ cargo run --release --bin bt -- -c examples/compat/empty-null.bt
 cargo run --release --features desktop --bin bt-app -- run examples/desktop
 ```
 
+### 为当前用户安装解释器
+
+此功能待下一版本发布。使用包含该功能的构建，在解压目录中执行：Linux/macOS 使用 `./bt install`，Windows PowerShell 使用 `.\bt.exe install`。`--install` 是等效别名。在 `bt>` 交互提示符中输入 `install` 或 `--install` 也可安装。`bt install <name>` 继续用于安装官方扩展。
+
+安装会把当前解释器复制到 Windows 的 `%USERPROFILE%\.bt\bin\bt.exe`、Linux 的 `~/.local/bin/bt` 或 macOS 的 `~/.bt/bin/bt`，并配置用户 `PATH`；完成后请打开新终端。只有语义版本较新的解释器才会替换安装版，同版或旧版保留已安装二进制。直接运行下载的旧版二进制时，仍然使用该旧版。
+
+如果 Windows 报告安装文件正在使用，请关闭使用该文件的程序，并从下载的解释器重试；替换失败会保留安装文件。安装程序不会强制结束程序。遇到权限或手动修改 shell 配置的问题时，请按提示修复，再执行 `install` 完成此前未完成的集成。
+
+安装还会为 `.bt` 文件注册已安装的解释器。Windows 使用用户级文件关联；Linux 在有桌面会话时创建终端桌面启动器；macOS 生成 `~/Applications/BT.app`，作为 Finder 和终端之间的辅助入口。ZIP 仍保留独立解释器，无须额外放入应用包。系统可能要求用户选择一次 BT 作为默认打开方式。通过该关联打开的脚本执行完成、报错或调用 `exit()` 后，启动器会等待按 Enter，不修改源码，也不追加 `pause()`。
+
+安装只由显式命令触发：双击解释器、执行脚本以及其他软件调用均不会检查安装状态、`PATH` 或安装版本。普通脚本执行不会额外暂停退出。平台细节见[环境搭建](https://btlang.org/zh-hans/docs/build)。
+
 ## AI 知识库
 
 [BT AI 知识库](https://btlang.org/ai)是提供给 AI 助手和编程智能体使用的官方机器可读入口。它通过可发现的清单和按主题拆分的知识模块，提供带版本的 BT 语言语义、标准库 API、Web 与桌面开发、扩展、FFI 及项目约束说明。当你让 AI 编写、审查或解释 BT 代码时，可以把这个链接交给它，并要求它只读取与当前任务有关的模块；这样既能让结果遵循最新版 BT 规范，也不会让无关文档占用过多上下文。

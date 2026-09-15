@@ -7,6 +7,8 @@ official website update page, then restore this file to this empty template.
 
 ## English
 
+- 2026-09-15: Add explicit per-user interpreter installation with `bt install`, the `--install` alias, and the same commands at the interactive prompt. Installation configures a fixed user executable path, user `PATH`, and platform file associations on Windows, Linux, and macOS; only a newer semantic version replaces an installed binary. Associated `.bt` files run in a terminal and wait for Enter after completion, errors, or `exit()` without modifying the script. Ordinary launches perform no installation checks and add no exit pause; `bt install <name>` continues to install extensions. Linux desktop integration requires a desktop session, and systems may require the user to select the default application once.
+
 - 2026-09-14: Windows packaged apps can opt into `app.single_instance` to forward later launches and file paths to the existing window through a bounded request queue. The frontend can drain queued arguments and listen for later requests. File associations are registered only on launches without file arguments, and Explorer is refreshed only when registry values change.
 
 - 2026-09-11: Extension manifests can now carry catalog summaries, public developer identity, repository, SPDX license, and localized display metadata with canonical BCP 47 keys such as `zh-CN`. Official extension releases use the committed `manifest.json`, `bindings.json`, `README.md`, and `README.zh-CN.md` as the only maintained metadata and documentation sources for website publication and editor tooling.
@@ -47,6 +49,8 @@ official website update page, then restore this file to this empty template.
   preserving the distinction from explicit `null`.
 
 ## 简体中文
+
+- 2026-09-15：新增显式用户级解释器安装，支持 `bt install`、`--install` 别名以及交互提示符中的相同命令。安装在 Windows、Linux 和 macOS 上配置固定的用户可执行文件路径、用户 `PATH` 与平台文件关联；只有语义版本较新的解释器才替换安装版。通过关联打开的 `.bt` 文件在终端中运行，执行完成、报错或调用 `exit()` 后等待按 Enter，不修改脚本。普通启动不检查安装状态，也不增加退出暂停；`bt install <name>` 继续安装扩展。Linux 桌面集成要求有桌面会话，系统可能要求用户选择一次默认打开方式。
 
 - 2026-09-14：Windows 打包应用可启用 `app.single_instance`，把后续启动和文件路径转交已有窗口，并通过有界请求队列供前端读取和监听。文件关联仅在不带文件参数的启动时注册，且只在注册表内容发生变化时通知资源管理器刷新。
 
