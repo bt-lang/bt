@@ -60,11 +60,11 @@ fn ordinary_invocations_do_not_install() {
     assert!(!fixture.0.join("relative-invalid-home").exists());
 }
 
-/// Both explicit spellings enter interpreter installation and failures return a nonzero status.
+/// Explicit install and update commands validate the user root and failures return a nonzero status.
 #[test]
-fn explicit_install_and_alias_validate_user_root() {
+fn explicit_install_and_update_validate_user_root() {
     let fixture = Fixture::new();
-    for argument in ["install", "--install"] {
+    for argument in ["install", "update"] {
         let output = fixture.command().arg(argument).output().unwrap();
         assert!(!output.status.success());
         let output = String::from_utf8(output.stdout).unwrap();
@@ -79,8 +79,41 @@ fn explicit_install_and_alias_validate_user_root() {
     assert!(!output.status.success());
     assert!(String::from_utf8(output.stdout)
         .unwrap()
-        .contains("Usage: bt --install"));
+        .contains("Unknown command: --install"));
     assert!(!fixture.0.join("relative-invalid-home").exists());
+}
+
+/// Help exposes both update forms and no longer advertises the removed alias.
+#[test]
+fn help_and_update_arguments_are_unambiguous() {
+    let fixture = Fixture::new();
+    let output = fixture.command().arg("-h").output().unwrap();
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    assert!(help.contains("update <name>"));
+    assert!(!help.contains("--install"));
+    let output = fixture
+        .command()
+        .args(["update", "sqlite", "1.0.0"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        text.contains("no version argument") || text.contains("extension support"),
+        "{text}"
+    );
+    let output = fixture
+        .command()
+        .arg("update")
+        .env("USERPROFILE", &fixture.0)
+        .env("HOME", &fixture.0)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8(output.stdout)
+        .unwrap()
+        .contains("run `bt install` first"));
 }
 
 /// Interactive installation reports a failure and continues in the same interpreter session.
@@ -97,7 +130,7 @@ fn interactive_install_keeps_the_current_session() {
         .stdin
         .take()
         .unwrap()
-        .write_all(b"install\n--install\n-v\n-e\n")
+        .write_all(b"install\nupdate\n--install\n-v\n-e\n")
         .unwrap();
     let output = child.wait_with_output().unwrap();
     assert!(output.status.success());

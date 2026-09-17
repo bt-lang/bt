@@ -1,5 +1,13 @@
 //! Explicit, per-user interpreter installation; ordinary execution never enters this module.
 
+#[path = "install/update.rs"]
+mod update;
+
+/// Downloads and verifies the latest stable release before updating an existing user installation.
+pub(crate) fn update() -> Result<(), String> {
+    update::run()
+}
+
 #[cfg(unix)]
 #[path = "install/unix.rs"]
 mod unix;

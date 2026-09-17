@@ -97,6 +97,7 @@ fn main() {
 /// Exercise complete first install, integration, idempotence, upgrade, and preservation paths.
 fn verify() -> Result<(), String> {
     let sandbox = Sandbox::create()?;
+    assert!(install::update().unwrap_err().contains("not installed"));
     let environment = create_key(HKEY_CURRENT_USER, "Environment")?;
     let existing_path = r"%SystemRoot%\System32;C:\Existing Tools";
     write_value(environment, "Path", existing_path, REG_EXPAND_SZ)?;

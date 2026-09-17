@@ -209,19 +209,25 @@ fn print_cli_help() {
         "  {}  {}        {}",
         style("│").true_color(81, 94, 110),
         style("install").true_color(107, 155, 110).bold(),
-        style("Install or update BT            │").true_color(81, 94, 110)
+        style("Install this BT                 │").true_color(81, 94, 110)
     );
     println!(
-        "  {}  {}      {}",
+        "  {}  {}         {}",
         style("│").true_color(81, 94, 110),
-        style("--install").true_color(107, 155, 110).bold(),
-        style("Alias for install               │").true_color(81, 94, 110)
+        style("update").true_color(107, 155, 110).bold(),
+        style("Update BT to latest release     │").true_color(81, 94, 110)
     );
     println!(
         "  {}  {} {}",
         style("│").true_color(81, 94, 110),
         style("install <name>").true_color(107, 155, 110).bold(),
         style("Install official extension      │").true_color(81, 94, 110)
+    );
+    println!(
+        "  {}  {}  {}",
+        style("│").true_color(81, 94, 110),
+        style("update <name>").true_color(107, 155, 110).bold(),
+        style("Update official extension       │").true_color(81, 94, 110)
     );
     println!(
         "  {}  {}             {}",
@@ -243,6 +249,10 @@ fn run_cli_command(
     allow_file_shortcut: bool,
 ) -> Result<bool, String> {
     match command {
+        "-h" => {
+            print_cli_help();
+            Ok(true)
+        }
         "-c" => {
             let path = values
                 .first()
@@ -265,11 +275,12 @@ fn run_cli_command(
             run_install_command(values)?;
             Ok(true)
         }
-        "--install" => {
-            if !values.is_empty() {
-                return Err("Usage: bt --install (use `bt install <name>` for extensions)".into());
+        "update" => {
+            if values.is_empty() {
+                crate::install::update()?;
+            } else {
+                run_extension_update_cli(values)?;
             }
-            crate::install::run()?;
             Ok(true)
         }
         "--open-script" => {
@@ -341,6 +352,18 @@ fn run_extension_install_cli(args: &[String]) -> Result<(), String> {
     crate::extensions::cli::install(args)
 }
 
+/// Updates an existing official extension in the selected project.
+#[cfg(feature = "extensions")]
+fn run_extension_update_cli(args: &[String]) -> Result<(), String> {
+    crate::extensions::cli::update(args)
+}
+
+/// Reports missing extension support without invoking the interpreter updater.
+#[cfg(not(feature = "extensions"))]
+fn run_extension_update_cli(args: &[String]) -> Result<(), String> {
+    run_extension_cli(args)
+}
+
 /// Output an explicit prompt for the extension toolchain in lightweight builds without extension capabilities enabled.
 #[cfg(not(feature = "extensions"))]
 fn run_extension_cli(_args: &[String]) -> Result<(), String> {
@@ -380,7 +403,7 @@ fn run_interactive_command(input: &str) -> Result<bool, String> {
     if let Some(command) = parts.next() {
         let values: Vec<String> = parts.map(|s| s.to_string()).collect();
         match command {
-            "install" | "--install" => {
+            "install" | "update" => {
                 run_cli_command(command, &values, false)?;
                 return Ok(true);
             }
@@ -447,10 +470,11 @@ pub fn main() {
             Ok(false) => {
                 println!("{}", style(format!("Unknown command: {}", command)).red());
                 print_cli_help();
+                std::process::exit(1);
             }
             Err(err) => {
                 println!("{}", style(err).red());
-                if command == "install" && values.is_empty() || command == "--install" {
+                if command == "install" && values.is_empty() || command == "update" {
                     std::process::exit(1);
                 }
             }

@@ -26,11 +26,10 @@ workspace = true
 
 [features]
 default = ["extensions", "ffi"]
-extensions = ["dep:zip", "dep:wasmparser", "dep:wasmtime", "dep:wasmtime-wasi", "dep:bt-extension-sdk"]
+extensions = ["dep:wasmparser", "dep:wasmtime", "dep:wasmtime-wasi", "dep:bt-extension-sdk"]
 ffi = ["dep:libffi", "dep:libloading"]
 quic = ["salvo/quinn"]
 desktop = [
-    "dep:zip",
     "dep:tauri",
     "dep:notify",
     "dep:xcap",
@@ -86,7 +85,7 @@ serde_json = "1.0.132"
 serde_regex = "1.1.0"
 semver = "1.0.28"
 glob = "0.3"
-zip = { version = "2.4.2", default-features = false, features = ["deflate"], optional = true }
+zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 wasmparser = { version = "0.251.0", default-features = false, features = ["std"], optional = true }
 wasmtime = { version = "46.0.1", default-features = false, features = ["cache", "cranelift", "runtime", "std"], optional = true }
 wasmtime-wasi = { version = "46.0.1", default-features = false, features = ["p1"], optional = true }

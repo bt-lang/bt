@@ -64,7 +64,7 @@ cargo run --release --features desktop --bin bt-app -- run examples/desktop
 
 ### Install the interpreter for your user account
 
-This feature is pending the next release. With a build containing it, run `./bt install` on Linux/macOS or `.\bt.exe install` in Windows PowerShell from the extracted directory. `--install` is an equivalent alias. At the `bt>` interactive prompt, enter `install` or `--install`. `bt install <name>` continues to install an official extension.
+This feature is pending the next release. With a build containing it, run `./bt install` on Linux/macOS or `.\bt.exe install` in Windows PowerShell from the extracted directory. Use `bt update` to check the official website and update an existing user installation to the latest stable release. At the `bt>` interactive prompt, enter `install` or `update`. The former `--install` alias is removed. Use `bt update <name> [--project <dir>]` to update an installed official extension without downgrading. `bt install <name>` continues to install an official extension.
 
 Installation copies the current interpreter to `%USERPROFILE%\.bt\bin\bt.exe` on Windows, `~/.local/bin/bt` on Linux, or `~/.bt/bin/bt` on macOS and configures the user `PATH`. Open a new terminal afterward. Only a newer semantic version replaces an installed interpreter; the same or an older version keeps the installed binary. Running a downloaded older binary directly still uses that older binary.
 

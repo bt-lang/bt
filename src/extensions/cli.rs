@@ -3,7 +3,7 @@
 //! This module is compiled only with the `extensions` feature. It handles scaffolding local
 //! extension projects, packaging `.bts` files, installation, inspection, and validation. The
 //! lightweight CLI built with `--no-default-features` does not link this module, avoiding a
-//! zip/Wasmtime dependency when extensions are not used.
+//! Wasmtime dependency when extensions are not used.
 
 use std::fs::{self, File};
 use std::io::{self, IsTerminal, Read, Write};
@@ -265,7 +265,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
 /// Runs the top-level `bt install <name> [version]` remote installation command.
 pub fn install(args: &[String]) -> Result<(), String> {
-    handle_remote_install(args)
+    handle_remote_install(args, false)
+}
+
+/// Updates a named installed extension to the latest official version without downgrading.
+pub fn update(args: &[String]) -> Result<(), String> {
+    handle_remote_install(args, true)
 }
 
 /// Prints extension toolchain help.
@@ -885,13 +890,20 @@ fn remove_installed_versions(package_dir: &Path, name: &str) -> Result<(), Strin
     Ok(())
 }
 
-/// Installs an extension from the official registry with `bt install`.
-fn handle_remote_install(args: &[String]) -> Result<(), String> {
+/// Installs or updates an official extension after validating its existing state and downloaded package.
+fn handle_remote_install(args: &[String], update_only: bool) -> Result<(), String> {
     if args.iter().any(|arg| is_help_arg(arg)) {
-        print_remote_install_help();
+        if update_only {
+            println!("Usage: bt update <name> [--project <dir>]\nUpdate an installed extension to the latest official version; never downgrade.");
+        } else {
+            print_remote_install_help();
+        }
         return Ok(());
     }
     let options = parse_remote_install_options(args)?;
+    if update_only && options.version.is_some() {
+        return Err("Usage: bt update <name> [--project <dir>] (no version argument)".into());
+    }
     if !is_lower_identifier(&options.name) {
         return Err(format!(
             "Extension name `{}` may contain only lowercase letters, digits, and underscores, and must start with a lowercase letter",
@@ -903,6 +915,31 @@ fn handle_remote_install(args: &[String]) -> Result<(), String> {
     }
 
     let project_dir = canonical_existing_dir(&options.project_dir)?;
+    let _update_lock = if update_only {
+        let directory = installed_extension_dir(&project_dir, &options.name);
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(directory.join(".bt-update.lock"))
+            .map_err(|e| {
+                format!(
+                    "Cannot open installed extension; run `bt install {}` first: {e}",
+                    options.name
+                )
+            })?;
+        lock.try_lock()
+            .map_err(|e| format!("Another extension update may be running: {e}"))?;
+        Some(lock)
+    } else {
+        None
+    };
+    let installed = if update_only {
+        Some(installed_update_package(&project_dir, &options.name)?)
+    } else {
+        None
+    };
     let info = fetch_registry_info(&options.name, options.version.as_deref())?;
     if info.name != options.name {
         return Err(format!(
@@ -912,6 +949,15 @@ fn handle_remote_install(args: &[String]) -> Result<(), String> {
     }
     let selected = select_registry_version(&info, options.version.as_deref())?.clone();
     validate_registry_version(&options.name, &selected)?;
+    if let Some((_, version)) = &installed {
+        if compare_semver(&selected.version, version)? <= 0 {
+            println!(
+                "Extension {} {} is up to date (latest official version: {}).",
+                options.name, version, selected.version
+            );
+            return Ok(());
+        }
+    }
     print_remote_install_plan(&options.name, &selected);
 
     let package_dir = installed_extension_dir(&project_dir, &options.name);
@@ -971,33 +1017,99 @@ fn handle_remote_install(args: &[String]) -> Result<(), String> {
         return Err(err);
     }
 
-    remove_installed_versions(&package_dir, &options.name)?;
-    fs::rename(&temp_path, &target_path).map_err(|err| {
-        let _ = fs::remove_file(&temp_path);
-        format!(
-            "Failed to write extension package `{}`: {}",
-            target_path.display(),
-            err
-        )
-    })?;
-    write_installed_readme(&package_dir, &info, &selected)?;
-
-    match crate::extensions::manager::ExtensionManager::load_project(
-        &project_dir,
-        Vm::system_environment_names().iter().copied(),
-    ) {
-        Ok(Some(manager)) => manager.shutdown(),
-        Ok(None) => {}
-        Err(err) => {
+    let verify = || {
+        match crate::extensions::manager::ExtensionManager::load_project(
+            &project_dir,
+            Vm::system_environment_names().iter().copied(),
+        ) {
+            Ok(Some(manager)) => manager.shutdown(),
+            Ok(None) => {}
+            Err(err) => {
+                return Err(format!(
+                    "Failed to scan project extensions after installation: {err}"
+                ))
+            }
+        }
+        Ok(())
+    };
+    if let Some((old_path, _)) = &installed {
+        publish_extension_update(&temp_path, &target_path, old_path, verify)?;
+    } else {
+        remove_installed_versions(&package_dir, &options.name)?;
+        fs::rename(&temp_path, &target_path).map_err(|err| {
+            let _ = fs::remove_file(&temp_path);
+            format!("Failed to write extension package: {err}")
+        })?;
+        if let Err(error) = verify() {
             let _ = fs::remove_file(&target_path);
-            return Err(format!("Failed to scan project extensions after installation; the new package was removed: {}", err));
+            return Err(error);
         }
     }
+    write_installed_readme(&package_dir, &info, &selected)?;
 
     println!("✔ completed");
     println!();
     println!("Done.");
     Ok(())
+}
+
+/// Keeps the previous package until publication and project validation both succeed.
+fn publish_extension_update(
+    staged: &Path,
+    target: &Path,
+    old: &Path,
+    verify: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    if target.exists() {
+        let _ = fs::remove_file(staged);
+        return Err("Update target already exists; installed extension was preserved".into());
+    }
+    let backup = old.with_file_name(format!(".bt-update-{}.backup", uuid::Uuid::new_v4()));
+    fs::rename(old, &backup).map_err(|e| {
+        let _ = fs::remove_file(staged);
+        format!("Cannot preserve installed extension: {e}")
+    })?;
+    let published = fs::rename(staged, target);
+    let result = match published {
+        Ok(()) => verify().inspect_err(|_| {
+            let _ = fs::remove_file(target);
+        }),
+        Err(error) => Err(format!("Cannot publish extension update: {error}")),
+    };
+    if let Err(error) = result {
+        let _ = fs::remove_file(staged);
+        fs::rename(&backup, old).map_err(|restore| {
+            format!("{error}; cannot restore {}: {restore}", backup.display())
+        })?;
+        return Err(error);
+    }
+    fs::remove_file(backup).map_err(|e| format!("Extension updated but backup cleanup failed: {e}"))
+}
+
+/// Requires exactly one valid installed package and uses its manifest version rather than its filename.
+fn installed_update_package(project: &Path, name: &str) -> Result<(PathBuf, String), String> {
+    let missing = || format!("Extension `{name}` is not installed; run `bt install {name}` first");
+    let directory = installed_extension_dir(project, name);
+    let entries = fs::read_dir(&directory).map_err(|_| missing())?;
+    let mut installed = None;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some(PACKAGE_EXTENSION) {
+            continue;
+        }
+        if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
+            return Err("Installed extension must be a regular package file".into());
+        }
+        let package = ExtensionPackage::read(&path).map_err(|e| e.to_string())?;
+        if package.manifest.name != name || installed.is_some() {
+            return Err(format!(
+                "Expected exactly one installed package for `{name}`"
+            ));
+        }
+        installed = Some((path, package.manifest.version.clone()));
+    }
+    installed.ok_or_else(missing)
 }
 
 /// Prints `bt install` help.
@@ -2075,6 +2187,27 @@ mod tests {
             .join("calc_cli-1.0.0.bts")
             .is_file());
 
+        let (installed, version) = installed_update_package(&root, "calc_cli").unwrap();
+        assert_eq!(version, "1.0.0");
+        let original = fs::read(&installed).unwrap();
+        let staged = installed.with_file_name(".test-update.tmp");
+        let target = installed.with_file_name("calc_cli-1.1.0.bts");
+        fs::write(&staged, b"candidate").unwrap();
+        assert!(
+            publish_extension_update(&staged, &target, &installed, || Err("scan failed".into()))
+                .is_err()
+        );
+        assert_eq!(fs::read(&installed).unwrap(), original);
+        assert!(!target.exists());
+        assert!(publish_extension_update(&staged, &target, &installed, || Ok(())).is_err());
+        assert_eq!(fs::read(&installed).unwrap(), original);
+        fs::write(&staged, &original).unwrap();
+        publish_extension_update(&staged, &target, &installed, || Ok(())).unwrap();
+        assert!(!installed.exists());
+        assert_eq!(fs::read(&target).unwrap(), original);
+        assert!(update(&["calc_cli".into(), "1.0.0".into()])
+            .unwrap_err()
+            .contains("no version"));
         let _ = fs::remove_dir_all(root);
     }
 

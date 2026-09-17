@@ -64,7 +64,7 @@ cargo run --release --features desktop --bin bt-app -- run examples/desktop
 
 ### 为当前用户安装解释器
 
-此功能待下一版本发布。使用包含该功能的构建，在解压目录中执行：Linux/macOS 使用 `./bt install`，Windows PowerShell 使用 `.\bt.exe install`。`--install` 是等效别名。在 `bt>` 交互提示符中输入 `install` 或 `--install` 也可安装。`bt install <name>` 继续用于安装官方扩展。
+此功能待下一版本发布。使用包含该功能的构建，在解压目录中执行：Linux/macOS 使用 `./bt install`，Windows PowerShell 使用 `.\bt.exe install`。使用 `bt update` 联网检查官网并把已有用户安装更新到最新正式版。在 `bt>` 交互提示符中输入 `install` 或 `update` 也可执行。已移除原 `--install` 别名。使用 `bt update <name> [--project <dir>]` 更新已安装的官方扩展，不会降级。`bt install <name>` 继续用于安装官方扩展。
 
 安装会把当前解释器复制到 Windows 的 `%USERPROFILE%\.bt\bin\bt.exe`、Linux 的 `~/.local/bin/bt` 或 macOS 的 `~/.bt/bin/bt`，并配置用户 `PATH`；完成后请打开新终端。只有语义版本较新的解释器才会替换安装版，同版或旧版保留已安装二进制。直接运行下载的旧版二进制时，仍然使用该旧版。
 
