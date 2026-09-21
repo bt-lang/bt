@@ -459,42 +459,58 @@ pub fn window_open_devtools(state: State<AppState>, window: WebviewWindow) -> Re
 
 /// Select one file.
 #[tauri::command]
-pub fn dialog_open_file(
+pub async fn dialog_open_file(
     app: AppHandle,
+    window: WebviewWindow,
     options: Option<api::dialog::FileDialogOptions>,
 ) -> Result<Option<String>, String> {
     require_desktop_permission()?;
-    api::dialog::open_file(app, options)
+    // Native dialog callbacks require a responsive UI event loop.
+    tauri::async_runtime::spawn_blocking(move || api::dialog::open_file(app, window, options))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 /// Select multiple files.
 #[tauri::command]
-pub fn dialog_open_files(
+pub async fn dialog_open_files(
     app: AppHandle,
+    window: WebviewWindow,
     options: Option<api::dialog::FileDialogOptions>,
 ) -> Result<Vec<String>, String> {
     require_desktop_permission()?;
-    api::dialog::open_files(app, options)
+    // Native dialog callbacks require a responsive UI event loop.
+    tauri::async_runtime::spawn_blocking(move || api::dialog::open_files(app, window, options))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 /// Select one directory.
 #[tauri::command]
-pub fn dialog_open_dir(
+pub async fn dialog_open_dir(
     app: AppHandle,
+    window: WebviewWindow,
     options: Option<api::dialog::FileDialogOptions>,
 ) -> Result<Option<String>, String> {
     require_desktop_permission()?;
-    api::dialog::open_dir(app, options)
+    // Native dialog callbacks require a responsive UI event loop.
+    tauri::async_runtime::spawn_blocking(move || api::dialog::open_dir(app, window, options))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 /// Select a path for saving a file.
 #[tauri::command]
-pub fn dialog_save_file(
+pub async fn dialog_save_file(
     app: AppHandle,
+    window: WebviewWindow,
     options: Option<api::dialog::FileDialogOptions>,
 ) -> Result<Option<String>, String> {
     require_desktop_permission()?;
-    api::dialog::save_file(app, options)
+    // Native dialog callbacks require a responsive UI event loop.
+    tauri::async_runtime::spawn_blocking(move || api::dialog::save_file(app, window, options))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 /// Display a system message dialog.

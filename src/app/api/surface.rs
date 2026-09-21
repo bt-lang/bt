@@ -386,9 +386,25 @@ pub async fn surface_window_create(
     };
     let url = url::Url::parse(&format!("bt://app/{}", options.entry))
         .map_err(|error| error.to_string())?;
+    // Builders accept logical units; establish full content bounds before any first presentation.
+    let initial_scale = if options.physical {
+        app.monitor_from_point(options.x, options.y)
+            .ok()
+            .flatten()
+            .map(|monitor| monitor.scale_factor())
+            .unwrap_or(1.0)
+    } else {
+        1.0
+    };
     let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(url))
         .title(&options.title)
         .visible(false)
+        .focused(false)
+        .inner_size(
+            options.width / initial_scale,
+            options.height / initial_scale,
+        )
+        .position(options.x / initial_scale, options.y / initial_scale)
         .decorations(options.decorations)
         .shadow(options.decorations)
         .always_on_top(options.always_on_top)
@@ -420,6 +436,25 @@ pub async fn surface_window_create(
         builder = builder.data_directory(storage);
     }
     let window = builder.build().map_err(|error| error.to_string())?;
+    // Capture overlays must never use Windows' zoom/fade window transitions.
+    #[cfg(windows)]
+    if !options.decorations {
+        use windows_sys::Win32::Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMWA_TRANSITIONS_FORCEDISABLED,
+        };
+        if let Ok(hwnd) = window.hwnd() {
+            let disabled: i32 = 1;
+            // The handle belongs to this live window and the input is a correctly sized BOOL.
+            unsafe {
+                DwmSetWindowAttribute(
+                    hwnd.0,
+                    DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+                    (&disabled as *const i32).cast(),
+                    std::mem::size_of_val(&disabled) as u32,
+                );
+            }
+        }
+    }
     let handle = app.clone();
     let event_label = label.clone();
     let child = window.clone();

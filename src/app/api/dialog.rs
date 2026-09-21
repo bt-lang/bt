@@ -3,7 +3,7 @@
 use crate::app::api::{absolute_path_text, map_error, required_text};
 use serde::Deserialize;
 use std::path::PathBuf;
-use tauri::AppHandle;
+use tauri::{AppHandle, WebviewWindow};
 use tauri_plugin_dialog::{
     DialogExt, FileDialogBuilder, FilePath, MessageDialogButtons, MessageDialogKind,
 };
@@ -46,18 +46,20 @@ pub struct MessageDialogOptions {
 /// Selects a single file.
 pub fn open_file(
     app: AppHandle,
+    window: WebviewWindow,
     options: Option<FileDialogOptions>,
 ) -> Result<Option<String>, String> {
-    file_path_to_text(build_file_dialog(&app, options)?.blocking_pick_file())
+    file_path_to_text(build_file_dialog(&app, &window, options)?.blocking_pick_file())
 }
 
 /// Selects multiple files.
 pub fn open_files(
     app: AppHandle,
+    window: WebviewWindow,
     options: Option<FileDialogOptions>,
 ) -> Result<Vec<String>, String> {
     file_paths_to_text(
-        build_file_dialog(&app, options)?
+        build_file_dialog(&app, &window, options)?
             .blocking_pick_files()
             .unwrap_or_default(),
     )
@@ -66,17 +68,19 @@ pub fn open_files(
 /// Selects a single directory.
 pub fn open_dir(
     app: AppHandle,
+    window: WebviewWindow,
     options: Option<FileDialogOptions>,
 ) -> Result<Option<String>, String> {
-    file_path_to_text(build_file_dialog(&app, options)?.blocking_pick_folder())
+    file_path_to_text(build_file_dialog(&app, &window, options)?.blocking_pick_folder())
 }
 
 /// Selects a path for saving a file.
 pub fn save_file(
     app: AppHandle,
+    window: WebviewWindow,
     options: Option<FileDialogOptions>,
 ) -> Result<Option<String>, String> {
-    file_path_to_text(build_file_dialog(&app, options)?.blocking_save_file())
+    file_path_to_text(build_file_dialog(&app, &window, options)?.blocking_save_file())
 }
 
 /// Shows a system message dialog.
@@ -118,10 +122,11 @@ pub fn confirm(
 /// Builds a file selection dialog.
 fn build_file_dialog(
     app: &AppHandle,
+    window: &WebviewWindow,
     options: Option<FileDialogOptions>,
 ) -> Result<FileDialogBuilder<tauri::Wry>, String> {
     let options = options.unwrap_or_default();
-    let mut builder = app.dialog().file();
+    let mut builder = app.dialog().file().set_parent(window);
     if !options.title.trim().is_empty() {
         builder = builder.set_title(options.title);
     }
