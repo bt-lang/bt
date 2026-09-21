@@ -9,13 +9,14 @@
       "https://*:*/*"
     ]
   },
-  "windows": ["main"],
+  "windows": ["main", "bt-child-*"],
   "permissions": [
     "allow-event-listener",
     "allow-window-control",
     "allow-bt-call",
     "allow-project-bootstrap",
     "allow-desktop-api",
-    "allow-screen-tools"
+    "allow-screen-tools",
+    "allow-surface-tools"
   ]
 }

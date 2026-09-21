@@ -153,6 +153,15 @@ pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), B
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            crate::app::api::surface::surface_freeze,
+            crate::app::api::surface::surface_read,
+            crate::app::api::surface::surface_import,
+            crate::app::api::surface::surface_release,
+            crate::app::api::surface::surface_copy,
+            crate::app::api::surface::surface_save,
+            crate::app::api::surface::surface_window_create,
+            crate::app::api::surface::surface_window_close,
+            crate::app::api::surface::surface_message,
             crate::app::commands::bt_call,
             crate::app::commands::credential_store,
             crate::app::commands::credential_has,
@@ -248,6 +257,7 @@ pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), B
         .manage(crate::app::api::ApiState::new())
         .manage(crate::app::api::production::ProductionState::new())
         .manage(crate::app::api::screen::ScreenState::new())
+        .manage(crate::app::api::surface::SurfaceState::default())
         .manage(crate::app::api::shortcut::ShortcutState::new())
         .manage(open_requests.clone())
         .manage(state)

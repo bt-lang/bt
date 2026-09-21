@@ -230,6 +230,7 @@ pub mod notify;
 pub mod production;
 pub mod screen;
 pub mod shortcut;
+pub mod surface;
 pub mod tray;
 pub mod watch;
 pub mod window;

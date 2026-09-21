@@ -1,0 +1,7 @@
+[[permission]]
+identifier = "allow-surface-tools"
+description = "Allow application windows to own bounded images and local utility windows."
+commands.allow = [
+  "surface_freeze", "surface_read", "surface_import", "surface_release",
+  "surface_copy", "surface_save", "surface_window_create", "surface_window_close", "surface_message",
+]

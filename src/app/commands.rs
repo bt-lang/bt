@@ -307,7 +307,9 @@ pub fn window_close(window: WebviewWindow) -> Result<(), String> {
 #[tauri::command]
 pub fn window_close_now(window: WebviewWindow, state: State<ApiState>) -> Result<(), String> {
     require_desktop_permission()?;
-    state.allow_close_once()?;
+    if window.label() == "main" {
+        state.allow_close_once()?;
+    }
     api::window::close(window)
 }
 

@@ -101,6 +101,20 @@ pub fn script(enable_refresh_shortcuts: bool, enable_devtools_shortcuts: bool) -
 
   /** Global BT desktop API object. */
   window.bt = {
+    /** Bounded image resources and same-application utility windows. */
+    surface: {
+      freeze() { return invoke("surface_freeze"); },
+      read(image_id) { return invoke("surface_read", { imageId: image_id }); },
+      import_png(data) { return invoke("surface_import", { data }); },
+      release(image_id) { return invoke("surface_release", { imageId: image_id }); },
+      copy(image_id) { return invoke("surface_copy", { imageId: image_id }); },
+      save(data, path) { return invoke("surface_save", { data, path }); },
+      create_window(options) { return invoke("surface_window_create", { options }); },
+      close_window(id) { return invoke("surface_window_close", { id }); },
+      send(target, payload) { return invoke("surface_message", { target, payload }); },
+      on_message(callback) { return listenTauri("bt://surface/message", callback); },
+      on_closed(callback) { return listenTauri("bt://surface/closed", callback); }
+    },
     /** Call a BT global function registered in app.main. */
     call(name, ...args) {
       return invoke("bt_call", { name, args });

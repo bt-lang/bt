@@ -123,29 +123,29 @@ struct ScreenSession {
 }
 
 /// Frozen frame for one monitor.
-struct ScreenFrame {
+pub(super) struct ScreenFrame {
     /// Zero-based monitor index within the session.
-    monitor_index: usize,
+    pub(super) monitor_index: usize,
     /// Whether this is the system's primary monitor.
-    primary: bool,
+    pub(super) primary: bool,
     /// Physical-pixel X coordinate of the monitor's top-left corner on the virtual desktop.
-    x: i32,
+    pub(super) x: i32,
     /// Physical-pixel Y coordinate of the monitor's top-left corner on the virtual desktop.
-    y: i32,
+    pub(super) y: i32,
     /// Native monitor X coordinate used by the Tauri overlay.
-    overlay_x: i32,
+    pub(super) overlay_x: i32,
     /// Native monitor Y coordinate used by the Tauri overlay.
-    overlay_y: i32,
+    pub(super) overlay_y: i32,
     /// Native monitor width used by the Tauri overlay.
-    overlay_width: u32,
+    pub(super) overlay_width: u32,
     /// Native monitor height used by the Tauri overlay.
-    overlay_height: u32,
+    pub(super) overlay_height: u32,
     /// Captured frame width in physical pixels.
-    width: u32,
+    pub(super) width: u32,
     /// Captured frame height in physical pixels.
-    height: u32,
+    pub(super) height: u32,
     /// Row-major RGBA8 pixel data.
-    rgba: Vec<u8>,
+    pub(super) rgba: Vec<u8>,
 }
 
 /// Screen selector mode.
@@ -608,6 +608,7 @@ async fn run_selection(
     state: &ScreenState,
     mode: ScreenMode,
 ) -> Result<(Arc<Vec<ScreenFrame>>, Option<ScreenSelection>), String> {
+    ensure_overlay_platform()?;
     let (session_id, receiver) = state.begin(mode)?;
     let _session_guard = ScreenSessionGuard { state, session_id };
     let frames = match tauri::async_runtime::spawn_blocking(capture_frames).await {
@@ -665,8 +666,13 @@ async fn run_selection(
 }
 
 /// Enumerates and freezes every monitor frame; overlays must appear only after this function returns.
-fn capture_frames() -> Result<Vec<ScreenFrame>, String> {
-    ensure_overlay_platform()?;
+pub(super) fn capture_frames() -> Result<Vec<ScreenFrame>, String> {
+    capture_frames_with_limit(MAX_CAPTURE_PIXELS)
+}
+
+/// Freezes monitors within the caller's remaining image budget.
+pub(super) fn capture_frames_with_limit(pixel_limit: u64) -> Result<Vec<ScreenFrame>, String> {
+    let pixel_limit = pixel_limit.min(MAX_CAPTURE_PIXELS);
     let monitors =
         Monitor::all().map_err(|err| format!("Failed to enumerate monitors: {}", err))?;
     if monitors.is_empty() {
@@ -688,10 +694,10 @@ fn capture_frames() -> Result<Vec<ScreenFrame>, String> {
             .checked_add(width as u64 * height as u64)
             .ok_or_else(|| "Total monitor pixel count overflowed".to_string())?;
     }
-    if declared_pixels > MAX_CAPTURE_PIXELS {
+    if declared_pixels > pixel_limit {
         return Err(format!(
             "Total monitor pixel count exceeds the limit of {}",
-            MAX_CAPTURE_PIXELS
+            pixel_limit
         ));
     }
 
@@ -723,10 +729,10 @@ fn capture_frames() -> Result<Vec<ScreenFrame>, String> {
         captured_pixels = captured_pixels
             .checked_add(width as u64 * height as u64)
             .ok_or_else(|| "Total captured-frame pixel count overflowed".to_string())?;
-        if captured_pixels > MAX_CAPTURE_PIXELS {
+        if captured_pixels > pixel_limit {
             return Err(format!(
                 "Total captured-frame pixel count exceeds the limit of {}",
-                MAX_CAPTURE_PIXELS
+                pixel_limit
             ));
         }
         let rgba = image.into_raw();
