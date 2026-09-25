@@ -360,6 +360,27 @@ pub async fn surface_window_create(
     app: tauri::AppHandle,
     options: SurfaceWindowOptions,
 ) -> Result<String, String> {
+    // GTK builders touch native widgets before Tauri can dispatch their work. Keep the
+    // complete Linux construction on the event loop, while the command awaits its result.
+    #[cfg(target_os = "linux")]
+    {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let handle = app.clone();
+        app.run_on_main_thread(move || {
+            let _ = sender.send(create_surface_window(handle, options));
+        })
+        .map_err(|error| error.to_string())?;
+        receiver.await.map_err(|error| error.to_string())?
+    }
+    #[cfg(not(target_os = "linux"))]
+    create_surface_window(app, options)
+}
+
+/// Constructs a child on the GTK event loop on Linux and the command thread elsewhere.
+fn create_surface_window(
+    app: tauri::AppHandle,
+    options: SurfaceWindowOptions,
+) -> Result<String, String> {
     require_desktop()?;
     validate_window(&options)?;
     if app.webview_windows().len() >= 20 {

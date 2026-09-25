@@ -7,6 +7,8 @@ official website update page, then restore this file to this empty template.
 
 ## English
 
+- 2026-09-25: Linux child WebView windows are created on the GTK main thread, preventing application crashes when opening settings, capture editors, or pinned images.
+
 - 2026-09-25: Desktop builds now use native executable names: Windows retains `.exe`, while Linux and macOS omit it. Linux builds also export a PNG icon and `.desktop` launcher and attempt to attach a local GNOME file icon. Linux fixed-size windows honor programmatic content sizes and release their fixed-size constraints during fullscreen, restoring them on exit. Window placement reports `position_supported` from the active GTK backend; native Wayland returns zero position placeholders and rejects absolute positioning instead of reporting a successful move. Screen surface placement uses the same backend capability. No X11 backend is forced, and Windows packaging and positioning remain unchanged.
 
 - 2026-09-21: Add `window.bt.surface` for xcap screen freezing, binary PNG reads, Canvas PNG imports, image clipboard output, PNG/JPEG saving, and explicit image release. Application-local images use bounded storage shared by editors and pins. Apps can create local resource child windows with physical or logical content geometry, native caption offset correction, optional transparency and always-on-top, image release on destruction, and bounded structured messages and close notifications. Image operations follow desktop/screen permissions, saving also requires `fs` permission, and child-window operations require desktop permission. Screen acquisition no longer depends on the built-in selector overlay: Wayland can attempt capture while child-window placement is left to the compositor; exact overlay placement and always-on-top behavior remain platform-dependent. File and directory dialogs invoked from a WebView no longer block the UI event loop and belong to the calling window, including child editors. On Windows, undecorated surface windows are created hidden and disable system window transitions to avoid startup flashes and unwanted zoom/fade effects.
@@ -53,6 +55,8 @@ official website update page, then restore this file to this empty template.
   preserving the distinction from explicit `null`.
 
 ## 简体中文
+
+- 2026-09-25：Linux 子 WebView 窗口改为在 GTK 主线程创建，避免打开设置、截图编辑器或贴图窗口时整个应用崩溃。
 
 - 2026-09-25：桌面构建改用平台原生可执行文件名：Windows 保留 `.exe`，Linux 与 macOS 不加后缀。Linux 构建同时导出 PNG 图标与 `.desktop` 启动器，并尝试设置本机 GNOME 文件图标。Linux 固定大小窗口支持通过程序调整内容尺寸，全屏时解除固定大小约束，退出全屏后恢复。窗口布局根据实际 GTK 后端返回 `position_supported`；原生 Wayland 的位置字段返回零占位值，并明确拒绝绝对定位，不再误报移动成功。截图 surface 使用同一后端能力判断定位。不会强制使用 X11，Windows 打包与定位行为保持不变。
 
