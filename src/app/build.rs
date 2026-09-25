@@ -22,7 +22,7 @@ pub fn build_project() -> Result<(), BtError> {
 
     let dist_dir = project_dir.join("dist");
     fs::create_dir_all(&dist_dir)?;
-    let output = dist_dir.join(format!("{}.exe", config.app.name));
+    let output = dist_dir.join(executable_name(&config.app.name));
     let temp_output = build_sidecar_path(&dist_dir, &config.app.name, "tmp");
     let backup_output = build_sidecar_path(&dist_dir, &config.app.name, "old");
     let runtime_exe = env::current_exe()?;
@@ -49,12 +49,88 @@ pub fn build_project() -> Result<(), BtError> {
         return Err(err);
     }
 
+    #[cfg(target_os = "linux")]
+    write_linux_desktop_files(&output, &config, icon_path.as_deref())?;
+
     println!("BT desktop app packaging complete");
     println!("Application name: {}", config.app.name);
     println!("Output file: {}", output.display());
     println!("BTR file count: {}", file_count);
     println!("BTR size: {} bytes", built.bytes.len());
 
+    Ok(())
+}
+
+/// Uses the native executable suffix without changing Windows package names.
+fn executable_name(app_name: &str) -> String {
+    format!("{}{}", app_name, std::env::consts::EXE_SUFFIX)
+}
+
+/// Escapes a desktop-entry value without allowing embedded keys or groups.
+#[cfg(target_os = "linux")]
+fn desktop_value(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+/// Quotes one executable argument through the Exec and desktop-entry escape layers.
+#[cfg(target_os = "linux")]
+fn desktop_exec_argument(value: &str) -> String {
+    let escaped = value
+        .replace('%', "%%")
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('`', "\\`")
+        .replace('$', "\\$");
+    desktop_value(&format!("\"{}\"", escaped))
+}
+
+/// Writes a PNG and desktop launcher; GNOME file metadata also decorates the local ELF when available.
+#[cfg(target_os = "linux")]
+fn write_linux_desktop_files(
+    output: &Path,
+    config: &AppJson,
+    icon: Option<&Path>,
+) -> Result<(), BtError> {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::{Command, Stdio};
+    let directory = output
+        .parent()
+        .ok_or_else(|| BtError::Config("Missing build output directory".into()))?;
+    let icon_output = directory.join(format!("{}.png", config.app.name));
+    let launcher = directory.join(format!("{}.desktop", config.app.name));
+    crate::app::icon::write_linux_icon(&icon_output, icon)?;
+    let executable = output.to_str().ok_or_else(|| {
+        BtError::Config("Linux desktop launchers require a UTF-8 output path".into())
+    })?;
+    let icon_name = icon_output.to_str().ok_or_else(|| {
+        BtError::Config("Linux desktop launchers require a UTF-8 icon path".into())
+    })?;
+    let contents = format!(
+        "[Desktop Entry]\nType=Application\nName={}\nExec={}\nIcon={}\nTerminal=false\nCategories=Utility;\n",
+        desktop_value(&config.app.name), desktop_exec_argument(executable), desktop_value(icon_name)
+    );
+    let temp = build_sidecar_path(directory, &config.app.name, "desktop");
+    fs::write(&temp, contents)?;
+    fs::set_permissions(&temp, fs::Permissions::from_mode(0o755))?;
+    fs::rename(&temp, &launcher)?;
+    // Metadata belongs to this local desktop, not the portable ELF format. Failure is not a packaging failure.
+    if let Ok(uri) = url::Url::from_file_path(&icon_output) {
+        let status = Command::new("gio")
+            .args(["set", "-t", "string"])
+            .arg(output)
+            .args(["metadata::custom-icon", uri.as_str()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        if !status.is_ok_and(|status| status.success()) {
+            eprintln!("Custom file icons are unavailable on this desktop; use {} for the application icon", launcher.display());
+        }
+    }
+    println!("Desktop launcher: {}", launcher.display());
     Ok(())
 }
 
@@ -210,8 +286,8 @@ fn build_sidecar_path(dist_dir: &Path, app_name: &str, suffix: &str) -> PathBuf 
         .map(|value| value.as_nanos())
         .unwrap_or(0);
     dist_dir.join(format!(
-        ".{}.exe.bt-build-{}-{}.{}",
-        app_name,
+        ".{}.bt-build-{}-{}.{}",
+        executable_name(app_name),
         std::process::id(),
         stamp,
         suffix
@@ -374,6 +450,25 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// Windows keeps its established suffix while Unix executable names remain extensionless.
+    #[test]
+    fn native_executable_name_matches_host() {
+        let expected = if cfg!(windows) { "Demo.exe" } else { "Demo" };
+        assert_eq!(executable_name("Demo"), expected);
+    }
+
+    /// Desktop text cannot inject a second key and Exec treats field codes as literal path characters.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_desktop_escaping_preserves_literal_values() {
+        assert_eq!(
+            desktop_value("Demo\nExec=bad\tvalue"),
+            "Demo\\nExec=bad\\tvalue"
+        );
+        assert_eq!(desktop_exec_argument("/tmp/a b/%f"), "\"/tmp/a b/%%f\"");
+        assert_eq!(desktop_exec_argument("/tmp/$HOME"), "\"/tmp/\\\\$HOME\"");
+    }
 
     /// Build configuration writes a default app.json when only index.html exists.
     #[test]

@@ -115,9 +115,7 @@ pub async fn surface_freeze(
     })
     .await
     .map_err(|error| error.to_string())??;
-    let overlay_supported = !(cfg!(target_os = "linux")
-        && std::env::var("XDG_SESSION_TYPE")
-            .is_ok_and(|value| value.eq_ignore_ascii_case("wayland")));
+    let overlay_supported = crate::app::window::desktop_position_supported();
     let mut result: Vec<FrozenDisplay> = Vec::with_capacity(frames.len());
     for frame in frames {
         let image = RgbaImage::from_raw(frame.width, frame.height, frame.rgba)
@@ -472,9 +470,7 @@ pub async fn surface_window_create(
     });
     let geometry = (|| -> Result<(), String> {
         // Wayland deliberately delegates placement to the compositor while retaining capture/editing.
-        let compositor_positioned = cfg!(target_os = "linux")
-            && std::env::var("XDG_SESSION_TYPE")
-                .is_ok_and(|value| value.eq_ignore_ascii_case("wayland"));
+        let compositor_positioned = !crate::app::window::desktop_position_supported();
         if !compositor_positioned {
             if options.physical {
                 window
@@ -500,6 +496,17 @@ pub async fn surface_window_create(
             window
                 .set_size(tauri::LogicalSize::new(options.width, options.height))
                 .map_err(|error| error.to_string())?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let scale = if options.physical { initial_scale } else { 1.0 };
+            crate::app::window::configure_linux_window(
+                &window,
+                (options.width / scale).round() as u32,
+                (options.height / scale).round() as u32,
+                options.decorations,
+            )
+            .map_err(|error| error.to_string())?;
         }
         if !compositor_positioned {
             // Use actual native chrome offsets at the target monitor's DPI.

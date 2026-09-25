@@ -421,3 +421,26 @@ mod tests {
         );
     }
 }
+
+/// Converts the configured ICO/PNG or built-in icon to the PNG used by Linux desktop launchers.
+#[cfg(target_os = "linux")]
+pub fn write_linux_icon(output: &Path, source: Option<&Path>) -> Result<(), BtError> {
+    let bytes = source.map(std::fs::read).transpose()?;
+    let icon = decode_window_icon(
+        bytes.as_deref().unwrap_or(DEFAULT_BT_APP_ICON_BYTES),
+        "Linux application icon",
+    )?;
+    let image = xcap::image::RgbaImage::from_raw(icon.width(), icon.height(), icon.rgba().to_vec())
+        .ok_or_else(|| BtError::Config("Invalid Linux application icon dimensions".into()))?;
+    let mut encoded = std::io::Cursor::new(Vec::new());
+    image
+        .write_to(&mut encoded, xcap::image::ImageFormat::Png)
+        .map_err(|error| {
+            BtError::Config(format!(
+                "Failed to encode Linux application icon: {}",
+                error
+            ))
+        })?;
+    std::fs::write(output, encoded.into_inner())?;
+    Ok(())
+}

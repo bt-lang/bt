@@ -499,6 +499,7 @@ dependencies = [
  "console",
  "futures-util",
  "glob",
+ "gtk",
  "hmac 0.12.1",
  "indexmap 2.14.1",
  "libffi",

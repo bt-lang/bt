@@ -4,9 +4,11 @@ use crate::app::api::{
     map_error, required_text, ApiState, CloseMode, WINDOW_CLOSE_REQUESTED_EVENT,
 };
 use serde::Serialize;
+#[cfg(not(target_os = "linux"))]
+use tauri::LogicalSize;
 use tauri::{
-    window::Color, AppHandle, LogicalPosition, LogicalSize, Manager, UserAttentionType,
-    WebviewWindow, WindowEvent,
+    window::Color, AppHandle, LogicalPosition, Manager, UserAttentionType, WebviewWindow,
+    WindowEvent,
 };
 
 /// Available work area of the monitor containing the current window, in logical pixels.
@@ -50,6 +52,8 @@ pub struct WindowPlacement {
     pub scale_factor: f64,
     /// WebView content area excluding system borders and shadows.
     pub content_area: WindowContentArea,
+    /// Whether the active windowing backend permits absolute desktop window positioning.
+    pub position_supported: bool,
     /// Current monitor's available work area excluding the taskbar and other system regions.
     pub work_area: WindowWorkArea,
 }
@@ -67,6 +71,10 @@ pub fn set_size(window: WebviewWindow, width: u32, height: u32) -> Result<(), St
     if width == 0 || height == 0 {
         return Err("Window width and height must be greater than 0".to_string());
     }
+    #[cfg(target_os = "linux")]
+    return crate::app::window::set_linux_content_size(&window, width, height)
+        .map_err(|err| map_error("Set window size", err));
+    #[cfg(not(target_os = "linux"))]
     window
         .set_size(LogicalSize::new(width as f64, height as f64))
         .map_err(|err| map_error("Set window size", err))
@@ -74,6 +82,11 @@ pub fn set_size(window: WebviewWindow, width: u32, height: u32) -> Result<(), St
 
 /// Sets the window frame's top-left position in logical pixels, allowing negative multi-monitor coordinates.
 pub fn set_position(window: WebviewWindow, x: i32, y: i32) -> Result<(), String> {
+    if !crate::app::window::desktop_position_supported() {
+        return Err(
+            "Absolute window positioning is not supported by the active Wayland compositor".into(),
+        );
+    }
     window
         .set_position(LogicalPosition::new(x as f64, y as f64))
         .map_err(|err| map_error("Set window position", err))
@@ -84,18 +97,27 @@ pub fn placement(window: WebviewWindow) -> Result<WindowPlacement, String> {
     let scale_factor = window
         .scale_factor()
         .map_err(|err| map_error("Read window scale factor", err))?;
-    let position = window
-        .outer_position()
-        .map_err(|err| map_error("Read window position", err))?
-        .to_logical::<f64>(scale_factor);
+    let position_supported = crate::app::window::desktop_position_supported();
+    let position = if position_supported {
+        window
+            .outer_position()
+            .map_err(|err| map_error("Read window position", err))?
+            .to_logical::<f64>(scale_factor)
+    } else {
+        LogicalPosition::new(0.0, 0.0)
+    };
     let size = window
         .outer_size()
         .map_err(|err| map_error("Read window size", err))?
         .to_logical::<f64>(scale_factor);
-    let content_position = window
-        .inner_position()
-        .map_err(|err| map_error("Read window content position", err))?
-        .to_logical::<f64>(scale_factor);
+    let content_position = if position_supported {
+        window
+            .inner_position()
+            .map_err(|err| map_error("Read window content position", err))?
+            .to_logical::<f64>(scale_factor)
+    } else {
+        LogicalPosition::new(0.0, 0.0)
+    };
     let content_size = window
         .inner_size()
         .map_err(|err| map_error("Read window content size", err))?
@@ -109,6 +131,7 @@ pub fn placement(window: WebviewWindow) -> Result<WindowPlacement, String> {
     let work_size = work_area.size.to_logical::<f64>(scale_factor);
 
     Ok(WindowPlacement {
+        position_supported,
         x: position.x.round() as i32,
         y: position.y.round() as i32,
         width: size.width.round().max(0.0) as u32,
@@ -203,6 +226,10 @@ pub fn center(window: WebviewWindow) -> Result<(), String> {
 
 /// Sets the window's fullscreen state.
 pub fn set_fullscreen(window: WebviewWindow, fullscreen: bool) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    return crate::app::window::set_linux_fullscreen(&window, fullscreen)
+        .map_err(|err| map_error("Set window fullscreen state", err));
+    #[cfg(not(target_os = "linux"))]
     window
         .set_fullscreen(fullscreen)
         .map_err(|err| map_error("Set window fullscreen state", err))

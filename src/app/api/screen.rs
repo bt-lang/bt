@@ -913,9 +913,7 @@ async fn close_overlay_windows_and_wait(app: &AppHandle, labels: &[String]) {
 fn ensure_overlay_platform() -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
-        let session = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
-        let gtk_backend = std::env::var("GDK_BACKEND").unwrap_or_default();
-        if session.eq_ignore_ascii_case("wayland") && !gtk_backend.eq_ignore_ascii_case("x11") {
+        if !crate::app::window::desktop_position_supported() {
             return Err(
                 "Native Wayland screen overlays are not supported in this version; run under an X11/XWayland session".to_string(),
             );

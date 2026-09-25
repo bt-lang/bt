@@ -9,6 +9,18 @@ use tauri::{
 };
 use url::Url;
 
+/// Active GTK backend capability, captured on the main thread after the first window is built.
+#[cfg(target_os = "linux")]
+static LINUX_POSITION_SUPPORTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Reports backend positioning support without querying GTK from worker threads.
+pub(crate) fn desktop_position_supported() -> bool {
+    #[cfg(target_os = "linux")]
+    return LINUX_POSITION_SUPPORTED.get().copied().unwrap_or(false);
+    #[cfg(not(target_os = "linux"))]
+    true
+}
+
 /// WebView data directory used by the main window and restricted child windows.
 pub(crate) struct WebviewStorageState {
     /// `None` uses Tauri's global default; any other value is the main window's explicit directory.
@@ -78,9 +90,120 @@ pub fn create_main_window(
     let window = builder
         .build()
         .map_err(|err| BtError::WebView(err.to_string()))?;
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::*;
+        let native = window
+            .gtk_window()
+            .map_err(|error| BtError::WebView(error.to_string()))?;
+        let _ =
+            LINUX_POSITION_SUPPORTED.set(native.display().type_().name() != "GdkWaylandDisplay");
+    }
+    #[cfg(target_os = "linux")]
+    configure_linux_window(
+        &window,
+        config.window.width,
+        config.window.height,
+        configured_decorations,
+    )
+    .map_err(|error| BtError::WebView(error.to_string()))?;
     crate::app::api::window::attach_close_handler(&window);
     crate::app::api::drag::attach_drag_handler(&window);
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+thread_local! {
+    /// Fullscreen restore geometry lives only on GTK's main thread and is removed on exit or destruction.
+    static LINUX_FULLSCREEN_RESTORE: std::cell::RefCell<std::collections::HashMap<String, (bool, i32, i32)>> = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Installs a zero-size titlebar for undecorated windows and ties fullscreen state to window lifetime.
+#[cfg(target_os = "linux")]
+pub(crate) fn configure_linux_window<R: tauri::Runtime>(
+    window: &WebviewWindow<R>,
+    width: u32,
+    height: u32,
+    decorations: bool,
+) -> tauri::Result<()> {
+    use gtk::prelude::*;
+    let native = window.gtk_window()?;
+    if !decorations {
+        // None reinstalls GTK's default titlebar, whose minimum width can enlarge compact toolbars.
+        native.set_titlebar(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
+    }
+    let label = window.label().to_string();
+    native.connect_destroy(move |_| {
+        LINUX_FULLSCREEN_RESTORE.with(|state| {
+            state.borrow_mut().remove(&label);
+        });
+    });
+    set_linux_content_size(window, width, height)
+}
+
+/// Releases GTK fixed-size constraints before fullscreen and restores them on exit.
+#[cfg(target_os = "linux")]
+pub(crate) fn set_linux_fullscreen<R: tauri::Runtime>(
+    window: &WebviewWindow<R>,
+    fullscreen: bool,
+) -> tauri::Result<()> {
+    use gtk::prelude::*;
+    let handle = window.clone();
+    window.run_on_main_thread(move || {
+        if let Ok(native) = handle.gtk_window() {
+            LINUX_FULLSCREEN_RESTORE.with(|state| {
+                let mut state = state.borrow_mut();
+                if fullscreen {
+                    let (width, height) = native.size();
+                    state.entry(handle.label().to_string()).or_insert((
+                        native.is_resizable(),
+                        width,
+                        height,
+                    ));
+                    native.set_size_request(-1, -1);
+                    native.set_resizable(true);
+                    native.fullscreen();
+                } else {
+                    native.unfullscreen();
+                    if let Some((resizable, width, height)) = state.remove(handle.label()) {
+                        native.set_resizable(resizable);
+                        if !resizable {
+                            native.set_size_request(width, height);
+                        }
+                        native.set_default_size(width, height);
+                        native.resize(width, height);
+                    }
+                }
+            });
+            // Keep Tauri's requested fullscreen state synchronized with the native GTK transition.
+            if let Err(error) = handle.set_fullscreen(fullscreen) {
+                eprintln!("Failed to synchronize fullscreen state: {}", error);
+            }
+        }
+    })
+}
+
+/// Applies logical content dimensions to GTK, including fixed-size windows ignored by gtk_window_resize alone.
+#[cfg(target_os = "linux")]
+pub(crate) fn set_linux_content_size<R: tauri::Runtime>(
+    window: &WebviewWindow<R>,
+    width: u32,
+    height: u32,
+) -> tauri::Result<()> {
+    use gtk::prelude::*;
+    let handle = window.clone();
+    window.run_on_main_thread(move || {
+        if let Ok(native) = handle.gtk_window() {
+            let width = width.min(i32::MAX as u32) as i32;
+            let height = height.min(i32::MAX as u32) as i32;
+            // Fixed GTK windows follow the widget requisition; replacing it also permits later shrinking.
+            if !native.is_resizable() {
+                native.set_size_request(width, height);
+            }
+            native.set_default_size(width, height);
+            native.resize(width, height);
+        }
+    })
 }
 
 /// Returns the native window shadow state required by the project configuration.
