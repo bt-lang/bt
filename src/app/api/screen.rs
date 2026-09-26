@@ -9,14 +9,15 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 use tauri::{LogicalPosition, LogicalSize};
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 use tauri::{PhysicalPosition, PhysicalSize};
-use tauri_plugin_clipboard_manager::ClipboardExt;
 use tokio::sync::oneshot;
+#[cfg(not(target_os = "linux"))]
 use xcap::Monitor;
 
 /// Reserved path used by the built-in screen selector under `bt://app/`.
 pub const OVERLAY_ENTRY: &str = "__bt_screen_overlay.html";
 
 /// Maximum number of monitors allowed in one screen-selection session.
+#[cfg(not(target_os = "linux"))]
 const MAX_MONITORS: usize = 16;
 
 /// Maximum total pixels frozen per selection, equivalent to 256 MiB of RGBA data.
@@ -510,7 +511,7 @@ pub async fn pick_color(
     let frame = frame_by_index(&frames, monitor_index)?;
     let mut color = frame.color_at(x, y, false)?;
     if options.copy_to_clipboard {
-        crate::app::api::clipboard::write_text(app, color.hex.clone())?;
+        crate::app::api::clipboard::write_text(app, color.hex.clone()).await?;
         color.clipboard = true;
     }
     Ok(Some(color))
@@ -545,9 +546,7 @@ pub async fn capture_area(
     };
     if options.copy_to_clipboard {
         let image = tauri::image::Image::new_owned(area.rgba, area.width, area.height);
-        app.clipboard()
-            .write_image(&image)
-            .map_err(|err| format!("Failed to write to the image clipboard: {}", err))?;
+        super::clipboard::write_image(app, image).await?;
     }
     Ok(Some(result))
 }
@@ -611,6 +610,9 @@ async fn run_selection(
     ensure_overlay_platform()?;
     let (session_id, receiver) = state.begin(mode)?;
     let _session_guard = ScreenSessionGuard { state, session_id };
+    #[cfg(target_os = "linux")]
+    let frames = super::desktop_portal::capture(app.clone(), MAX_CAPTURE_PIXELS).await?;
+    #[cfg(not(target_os = "linux"))]
     let frames = match tauri::async_runtime::spawn_blocking(capture_frames).await {
         Ok(Ok(frames)) => frames,
         Ok(Err(err)) => return Err(err),
@@ -666,11 +668,13 @@ async fn run_selection(
 }
 
 /// Enumerates and freezes every monitor frame; overlays must appear only after this function returns.
+#[cfg(not(target_os = "linux"))]
 pub(super) fn capture_frames() -> Result<Vec<ScreenFrame>, String> {
     capture_frames_with_limit(MAX_CAPTURE_PIXELS)
 }
 
 /// Freezes monitors within the caller's remaining image budget.
+#[cfg(not(target_os = "linux"))]
 pub(super) fn capture_frames_with_limit(pixel_limit: u64) -> Result<Vec<ScreenFrame>, String> {
     let pixel_limit = pixel_limit.min(MAX_CAPTURE_PIXELS);
     let monitors =
@@ -915,7 +919,7 @@ fn ensure_overlay_platform() -> Result<(), String> {
     {
         if !crate::app::window::desktop_position_supported() {
             return Err(
-                "Native Wayland screen overlays are not supported in this version; run under an X11/XWayland session".to_string(),
+                "Built-in screen overlays require compositor positioning; use bt.surface for a native Wayland fullscreen editor".to_string(),
             );
         }
     }
@@ -923,6 +927,7 @@ fn ensure_overlay_platform() -> Result<(), String> {
 }
 
 /// Adds actionable guidance for macOS screen-recording permission failures and preserves the underlying error elsewhere.
+#[cfg(not(target_os = "linux"))]
 fn capture_error(err: impl std::fmt::Display) -> String {
     #[cfg(target_os = "macos")]
     {
@@ -938,6 +943,7 @@ fn capture_error(err: impl std::fmt::Display) -> String {
 }
 
 /// Converts xcap's logical monitor origin to the physical-pixel origin used by frozen frames.
+#[cfg(not(target_os = "linux"))]
 fn physical_frame_origin(x: i32, y: i32, scale_factor: f32) -> Result<(i32, i32), String> {
     if !scale_factor.is_finite() || scale_factor <= 0.0 {
         return Err("Monitor scale factor is invalid".to_string());

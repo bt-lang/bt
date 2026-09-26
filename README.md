@@ -95,6 +95,8 @@ Read https://btlang.org/ai before working on this BT task, then load only the re
 
 Windows desktop builds require the MSVC toolchain, the Windows SDK, and the WebView2 Runtime. The Linux and macOS packages used by CI are documented in [the release workflow](.github/workflows/build.yml).
 
+Linux desktop applications require a native Wayland session. Screen capture and global shortcuts use desktop portals; there is no X11/XWayland fallback. Desktop placement beyond ordinary Wayland window management requires compositor integration. The CLI and server runtime do not require a graphical session.
+
 Inside a desktop project containing `app.json`, use the built runtime to create a bundled executable:
 
 ```text

@@ -9,14 +9,10 @@ use tauri::{
 };
 use url::Url;
 
-/// Active GTK backend capability, captured on the main thread after the first window is built.
-#[cfg(target_os = "linux")]
-static LINUX_POSITION_SUPPORTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-
 /// Reports backend positioning support without querying GTK from worker threads.
 pub(crate) fn desktop_position_supported() -> bool {
     #[cfg(target_os = "linux")]
-    return LINUX_POSITION_SUPPORTED.get().copied().unwrap_or(false);
+    return false;
     #[cfg(not(target_os = "linux"))]
     true
 }
@@ -96,8 +92,11 @@ pub fn create_main_window(
         let native = window
             .gtk_window()
             .map_err(|error| BtError::WebView(error.to_string()))?;
-        let _ =
-            LINUX_POSITION_SUPPORTED.set(native.display().type_().name() != "GdkWaylandDisplay");
+        if native.display().type_().name() != "GdkWaylandDisplay" {
+            return Err(BtError::Config(
+                "Linux desktop applications require native Wayland".into(),
+            ));
+        }
     }
     #[cfg(target_os = "linux")]
     configure_linux_window(
@@ -128,6 +127,32 @@ pub(crate) fn configure_linux_window<R: tauri::Runtime>(
 ) -> tauri::Result<()> {
     use gtk::prelude::*;
     let native = window.gtk_window()?;
+    // Portals identify the focused application by its Wayland app_id. Tauri's
+    // generic host identity must not differ from the bundled application's launcher.
+    if let Some(state) = window
+        .app_handle()
+        .try_state::<crate::app::runtime::AppState>()
+    {
+        if let Ok(runtime) = state.lock_runtime() {
+            use gtk::glib::translate::ToGlibPtr;
+            let app_id = std::ffi::CString::new(runtime.config.app.id.as_str())
+                .map_err(|error| tauri::Error::Anyhow(error.into()))?;
+            native.realize();
+            if let Some(surface) = native.window() {
+                unsafe extern "C" {
+                    /// GTK 3.24 Wayland application identity setter; GTK owns both pointers for this call.
+                    fn gdk_wayland_window_set_application_id(
+                        window: *mut gtk::gdk::ffi::GdkWindow,
+                        application_id: *const std::ffi::c_char,
+                    );
+                }
+                // This module only initializes native Wayland displays on Linux.
+                unsafe {
+                    gdk_wayland_window_set_application_id(surface.to_glib_none().0, app_id.as_ptr())
+                };
+            }
+        }
+    }
     if !decorations {
         // None reinstalls GTK's default titlebar, whose minimum width can enlarge compact toolbars.
         native.set_titlebar(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));

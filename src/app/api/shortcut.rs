@@ -1,9 +1,14 @@
 //! Global shortcut desktop API implementation for `bt.shortcut`.
 
 use serde::Serialize;
+#[cfg(not(target_os = "linux"))]
 use std::collections::HashMap;
+#[cfg(not(target_os = "linux"))]
 use std::sync::{Mutex, MutexGuard};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::AppHandle;
+#[cfg(not(target_os = "linux"))]
+use tauri::{Emitter, Manager};
+#[cfg(not(target_os = "linux"))]
 use tauri_plugin_global_shortcut::{
     GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState as NativeShortcutState,
 };
@@ -12,15 +17,17 @@ use tauri_plugin_global_shortcut::{
 pub const SHORTCUT_TRIGGERED_EVENT: &str = "bt://shortcut/triggered";
 
 /// Maximum number of global shortcuts registered concurrently by one desktop application.
-const MAX_SHORTCUTS: usize = 16;
+pub(super) const MAX_SHORTCUTS: usize = 16;
 
 /// Shared runtime state for global shortcuts.
+#[cfg(not(target_os = "linux"))]
 pub struct ShortcutState {
     /// Bidirectional index between stable caller IDs and native shortcut IDs.
     inner: Mutex<ShortcutStateInner>,
 }
 
 /// Contents of the shared global shortcut runtime state.
+#[cfg(not(target_os = "linux"))]
 struct ShortcutStateInner {
     /// Index from stable caller IDs to shortcut records.
     by_id: HashMap<String, RegisteredShortcut>,
@@ -29,6 +36,7 @@ struct ShortcutStateInner {
 }
 
 /// Record for one registered global shortcut.
+#[cfg(not(target_os = "linux"))]
 #[derive(Clone, Debug)]
 struct RegisteredShortcut {
     /// Caller-provided shortcut text with surrounding whitespace removed.
@@ -46,6 +54,7 @@ pub struct ShortcutTriggeredEvent {
     pub accelerator: String,
 }
 
+#[cfg(not(target_os = "linux"))]
 impl ShortcutState {
     /// Creates empty global shortcut state.
     pub fn new() -> Self {
@@ -84,13 +93,13 @@ impl ShortcutState {
 }
 
 /// Registers or atomically replaces a global shortcut.
+#[cfg(not(target_os = "linux"))]
 pub fn register(
     app: AppHandle,
     state: &ShortcutState,
     shortcut_id: String,
     accelerator: String,
 ) -> Result<(), String> {
-    ensure_shortcut_platform()?;
     let shortcut_id = validate_shortcut_id(shortcut_id)?;
     let accelerator = accelerator.trim().to_string();
     if accelerator.is_empty() || accelerator.len() > 128 {
@@ -158,22 +167,8 @@ pub fn register(
     Ok(())
 }
 
-/// Returns a clear platform error for native Wayland sessions where the standard global shortcut backend is unavailable.
-fn ensure_shortcut_platform() -> Result<(), String> {
-    #[cfg(target_os = "linux")]
-    {
-        let session = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
-        let gtk_backend = std::env::var("GDK_BACKEND").unwrap_or_default();
-        if session.eq_ignore_ascii_case("wayland") && !gtk_backend.eq_ignore_ascii_case("x11") {
-            return Err(
-                "This version does not support global shortcuts on native Wayland; run it in an X11/XWayland session".to_string(),
-            );
-        }
-    }
-    Ok(())
-}
-
 /// Unregisters the global shortcut associated with a stable ID.
+#[cfg(not(target_os = "linux"))]
 pub fn unregister(
     app: AppHandle,
     state: &ShortcutState,
@@ -193,6 +188,7 @@ pub fn unregister(
 }
 
 /// Unregisters all global shortcuts registered by the current application through the BT bridge.
+#[cfg(not(target_os = "linux"))]
 pub fn unregister_all(app: AppHandle, state: &ShortcutState) -> Result<(), String> {
     let mut inner = state.lock()?;
     if inner.by_id.is_empty() {
@@ -217,6 +213,7 @@ pub fn unregister_all(app: AppHandle, state: &ShortcutState) -> Result<(), Strin
 }
 
 /// Receives native shortcut events and dispatches only key presses to the main window.
+#[cfg(not(target_os = "linux"))]
 pub fn dispatch(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
     if event.state != NativeShortcutState::Pressed {
         return;
@@ -231,7 +228,7 @@ pub fn dispatch(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
 }
 
 /// Validates caller shortcut IDs to keep empty, unbounded, or unpredictable text out of persistent state.
-fn validate_shortcut_id(shortcut_id: String) -> Result<String, String> {
+pub(super) fn validate_shortcut_id(shortcut_id: String) -> Result<String, String> {
     let shortcut_id = shortcut_id.trim().to_string();
     if shortcut_id.is_empty()
         || shortcut_id.len() > 64
@@ -262,6 +259,7 @@ mod tests {
 
     /// Global shortcut state must recover the page event payload by native ID.
     #[test]
+    #[cfg(not(target_os = "linux"))]
     fn shortcut_state_builds_event_payload() {
         let state = ShortcutState::new();
         {
@@ -280,5 +278,26 @@ mod tests {
         assert_eq!(event.shortcut_id, "capture");
         assert_eq!(event.accelerator, "Control+Alt+KeyX");
         assert!(state.event_for_native_id(8).unwrap().is_none());
+    }
+}
+
+/// Wayland request operations shared with the command entry points.
+#[cfg(target_os = "linux")]
+pub(crate) use super::shortcut_portal::Operation as PortalOperation;
+
+/// Dispatches asynchronous portal registration on native Wayland.
+#[cfg(target_os = "linux")]
+pub(crate) async fn wayland(app: AppHandle, operation: PortalOperation) -> Result<bool, String> {
+    super::shortcut_portal::execute(app, operation).await
+}
+
+/// Linux registrations live exclusively in the bounded portal actor.
+#[cfg(target_os = "linux")]
+pub struct ShortcutState;
+#[cfg(target_os = "linux")]
+impl ShortcutState {
+    /// Construct the marker without initializing an X11 hotkey manager.
+    pub fn new() -> Self {
+        Self
     }
 }

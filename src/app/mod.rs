@@ -19,7 +19,8 @@ pub mod protocol;
 pub mod resource;
 pub mod runtime;
 pub mod server;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
+#[cfg_attr(target_os = "linux", path = "single_instance_linux.rs")]
 pub mod single_instance;
 pub mod starter;
 pub mod vm_bridge;

@@ -501,7 +501,9 @@ dependencies = [
  "glob",
  "gtk",
  "hmac 0.12.1",
+ "image",
  "indexmap 2.14.1",
+ "keyboard-types",
  "libffi",
  "libloading 0.9.0",
  "md5",
@@ -2988,6 +2990,8 @@ dependencies = [
  "num-traits",
  "png 0.18.1",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]

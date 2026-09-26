@@ -234,3 +234,11 @@ pub mod surface;
 pub mod tray;
 pub mod watch;
 pub mod window;
+
+/// Wayland desktop portal backend for bounded global shortcuts.
+#[cfg(target_os = "linux")]
+mod shortcut_portal;
+
+/// Shared Wayland desktop portal transport and screen acquisition.
+#[cfg(target_os = "linux")]
+pub(crate) mod desktop_portal;

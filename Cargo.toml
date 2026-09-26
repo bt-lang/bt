@@ -33,6 +33,8 @@ desktop = [
     "dep:tauri",
     "dep:notify",
     "dep:xcap",
+    "dep:image",
+    "dep:keyboard-types",
     "dep:tauri-plugin-dialog",
     "dep:tauri-plugin-clipboard-manager",
     "dep:tauri-plugin-global-shortcut",
@@ -58,6 +60,13 @@ winresource = "0.1"
 tauri-utils = { version = "=2.9.3", features = ["build-2"] }
 serde = "1.0.211"
 serde_json = "1.0.132"
+
+# Keep local desktop iteration incremental and avoid debug-symbol/link-time overhead.
+[profile.dev]
+opt-level = 0
+debug = 0
+lto = false
+incremental = true
 
 # Favor a compact release binary.
 [profile.release]
@@ -111,14 +120,20 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Graph
 libffi = { version = "5.1.1", optional = true }
 libloading = { version = "0.9.0", optional = true }
 tauri-plugin-dialog = { version = "2.7.1", optional = true }
-tauri-plugin-clipboard-manager = { version = "2.3.2", optional = true }
-tauri-plugin-global-shortcut = { version = "=2.3.2", optional = true }
 tauri-plugin-notification = { version = "2.3.3", optional = true }
 tauri-plugin-opener = { version = "2.5.4", optional = true }
 notify-rust = { version = "4.17.0", optional = true }
+
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg"], optional = true }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
 xcap = { version = "=0.9.8", default-features = false, optional = true }
+tauri-plugin-global-shortcut = { version = "=2.3.2", optional = true }
+tauri-plugin-clipboard-manager = { version = "2.3.2", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+keyboard-types = { version = "=0.7.0", optional = true }
+
 gtk = { version = "=0.18.2", optional = true }
 
 [dev-dependencies]

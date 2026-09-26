@@ -95,6 +95,8 @@ cargo run --release --features desktop --bin bt-app -- run examples/desktop
 
 Windows 桌面构建需要 MSVC 工具链、Windows SDK 和 WebView2 Runtime。CI 使用的 Linux、macOS 依赖可查看[发布工作流](.github/workflows/build.yml)。
 
+Linux 桌面应用要求原生 Wayland 会话。屏幕截图和全局快捷键使用 desktop portal，不提供 X11/XWayland 回退。超出普通 Wayland 窗口管理能力的桌面定位需要合成器集成。CLI 和服务端运行时不要求图形会话。
+
 在包含 `app.json` 的桌面项目目录中，可使用已编译的运行时生成独立可执行文件：
 
 ```text

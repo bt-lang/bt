@@ -106,6 +106,8 @@ impl Drop for AppRuntime {
 
 /// Starts the BT desktop application.
 pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), BtError> {
+    #[cfg(target_os = "linux")]
+    gtk::gdk::set_allowed_backends("wayland");
     let (runtime, dev_reload) = match load_initial_runtime(target.as_deref(), app_args) {
         Ok(result) => result,
         Err(err) => {
@@ -115,7 +117,7 @@ pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), B
         }
     };
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     let (instance_guard, pipe_name) =
         if runtime.source == AppSource::EmbeddedExe && runtime.config.app.single_instance {
             match crate::app::single_instance::claim_or_forward(&runtime.app_args)? {
@@ -125,11 +127,13 @@ pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), B
         } else {
             (None, None)
         };
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     let _instance_guard = instance_guard;
-    #[cfg(windows)]
+    #[cfg(target_os = "linux")]
+    let listener_stop = _instance_guard.as_ref().map(|guard| guard.listener_stop());
+    #[cfg(any(windows, target_os = "linux"))]
     let open_requests = crate::app::single_instance::OpenRequests::default();
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     let open_requests = ();
 
     crate::app::console::configure_app_console(runtime.config.dev.console);
@@ -142,14 +146,17 @@ pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), B
     let title = runtime.config.app.title.clone();
     let state = AppState::new(runtime, dev_reload);
 
-    crate::app::protocol::register_bt_protocol(tauri::Builder::default())
+    let builder = tauri::Builder::default();
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(crate::app::api::shortcut::dispatch)
+            .build(),
+    );
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_clipboard_manager::init());
+    crate::app::protocol::register_bt_protocol(builder)
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(crate::app::api::shortcut::dispatch)
-                .build(),
-        )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -284,6 +291,15 @@ pub fn start_app(target: Option<PathBuf>, app_args: Vec<String>) -> Result<(), B
                     name,
                     app.handle().clone(),
                     open_requests.clone(),
+                )?;
+            }
+            #[cfg(target_os = "linux")]
+            if let (Some(listener), Some(guard)) = (pipe_name, listener_stop) {
+                crate::app::single_instance::start_listener(
+                    listener,
+                    app.handle().clone(),
+                    open_requests.clone(),
+                    guard,
                 )?;
             }
             Ok(())

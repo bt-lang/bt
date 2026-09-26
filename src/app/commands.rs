@@ -5,7 +5,7 @@ use crate::app::starter::CreateProjectInput;
 use crate::permission::{self, Capability};
 use serde_json::{json, Value as JsonValue};
 use std::path::PathBuf;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 use tauri::Manager;
 use tauri::{AppHandle, State, WebviewWindow};
 
@@ -580,23 +580,23 @@ pub fn tray_set_menu(
 
 /// Read clipboard text.
 #[tauri::command]
-pub fn clipboard_read_text(app: AppHandle) -> Result<String, String> {
+pub async fn clipboard_read_text(app: AppHandle) -> Result<String, String> {
     require_desktop_permission()?;
-    api::clipboard::read_text(app)
+    api::clipboard::read_text(app).await
 }
 
 /// Write clipboard text.
 #[tauri::command]
-pub fn clipboard_write_text(app: AppHandle, text: String) -> Result<(), String> {
+pub async fn clipboard_write_text(app: AppHandle, text: String) -> Result<(), String> {
     require_desktop_permission()?;
-    api::clipboard::write_text(app, text)
+    api::clipboard::write_text(app, text).await
 }
 
 /// Clear the clipboard.
 #[tauri::command]
-pub fn clipboard_clear(app: AppHandle) -> Result<(), String> {
+pub async fn clipboard_clear(app: AppHandle) -> Result<(), String> {
     require_desktop_permission()?;
-    api::clipboard::clear(app)
+    api::clipboard::clear(app).await
 }
 
 /// Open the fullscreen color picker and return the selected color, or `null` if canceled.
@@ -623,34 +623,60 @@ pub async fn screen_capture_area(
 
 /// Register or replace a global shortcut.
 #[tauri::command]
-pub fn shortcut_register(
+pub async fn shortcut_register(
     app: AppHandle,
-    state: State<api::shortcut::ShortcutState>,
+    state: State<'_, api::shortcut::ShortcutState>,
     shortcut_id: String,
     accelerator: String,
 ) -> Result<(), String> {
     require_desktop_permission()?;
+    #[cfg(target_os = "linux")]
+    {
+        let _ = state;
+        return api::shortcut::wayland(
+            app,
+            api::shortcut::PortalOperation::Register(shortcut_id, accelerator),
+        )
+        .await
+        .map(|_| ());
+    }
+    #[cfg(not(target_os = "linux"))]
     api::shortcut::register(app, &state, shortcut_id, accelerator)
 }
 
 /// Unregister the global shortcut with the specified ID.
 #[tauri::command]
-pub fn shortcut_unregister(
+pub async fn shortcut_unregister(
     app: AppHandle,
-    state: State<api::shortcut::ShortcutState>,
+    state: State<'_, api::shortcut::ShortcutState>,
     shortcut_id: String,
 ) -> Result<bool, String> {
     require_desktop_permission()?;
+    #[cfg(target_os = "linux")]
+    {
+        let _ = state;
+        return api::shortcut::wayland(app, api::shortcut::PortalOperation::Remove(shortcut_id))
+            .await;
+    }
+    #[cfg(not(target_os = "linux"))]
     api::shortcut::unregister(app, &state, shortcut_id)
 }
 
 /// Unregister every global shortcut registered by the current application through the BT bridge.
 #[tauri::command]
-pub fn shortcut_unregister_all(
+pub async fn shortcut_unregister_all(
     app: AppHandle,
-    state: State<api::shortcut::ShortcutState>,
+    state: State<'_, api::shortcut::ShortcutState>,
 ) -> Result<(), String> {
     require_desktop_permission()?;
+    #[cfg(target_os = "linux")]
+    {
+        let _ = state;
+        return api::shortcut::wayland(app, api::shortcut::PortalOperation::Clear)
+            .await
+            .map(|_| ());
+    }
+    #[cfg(not(target_os = "linux"))]
     api::shortcut::unregister_all(app, &state)
 }
 
@@ -803,13 +829,13 @@ pub fn app_args(state: State<AppState>) -> Result<Vec<String>, String> {
 #[tauri::command]
 pub fn app_take_open_requests(app: AppHandle) -> Result<Vec<Vec<String>>, String> {
     require_desktop_permission()?;
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     {
         return Ok(app
             .state::<crate::app::single_instance::OpenRequests>()
             .take());
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = app;
         Ok(Vec::new())

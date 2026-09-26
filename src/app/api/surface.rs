@@ -1,14 +1,13 @@
 //! Bounded application-owned images and local WebView windows for screenshot editors and utility panels.
 
 use base64::Engine;
+use image::{ImageFormat, ImageReader, RgbaImage};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
-use tauri_plugin_clipboard_manager::ClipboardExt;
-use xcap::image::{ImageFormat, ImageReader, RgbaImage};
 
 /// Aggregate raw image budget, including frozen monitors and pinned images.
 const IMAGE_BUDGET: usize = 256 * 1024 * 1024;
@@ -95,6 +94,7 @@ fn require_desktop() -> Result<(), String> {
 /// Freezes display pixels without creating the runtime's built-in selection overlay.
 #[tauri::command]
 pub async fn surface_freeze(
+    app: tauri::AppHandle,
     state: tauri::State<'_, SurfaceState>,
 ) -> Result<Vec<FrozenDisplay>, String> {
     require_screen()?;
@@ -110,6 +110,11 @@ pub async fn surface_freeze(
         .map(|image| image.as_raw().len())
         .sum();
     let pixel_limit = IMAGE_BUDGET.saturating_sub(used) as u64 / 4;
+    #[cfg(target_os = "linux")]
+    let frames = super::desktop_portal::capture(app, pixel_limit).await?;
+    #[cfg(not(target_os = "linux"))]
+    let _ = app;
+    #[cfg(not(target_os = "linux"))]
     let frames = tauri::async_runtime::spawn_blocking(move || {
         super::screen::capture_frames_with_limit(pixel_limit)
     })
@@ -180,7 +185,7 @@ fn decode_png(data: &str) -> Result<RgbaImage, String> {
         .decode(encoded)
         .map_err(|error| error.to_string())?;
     let mut reader = ImageReader::with_format(Cursor::new(bytes), ImageFormat::Png);
-    let mut limits = xcap::image::Limits::default();
+    let mut limits = image::Limits::default();
     limits.max_alloc = Some(IMAGE_BUDGET as u64);
     limits.max_image_width = Some(32768);
     limits.max_image_height = Some(32768);
@@ -231,17 +236,11 @@ pub async fn surface_copy(
         .try_lock()
         .map_err(|_| "Another image operation is in progress")?;
     let image = state.get(&image_id)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        app.clipboard()
-            .write_image(&tauri::image::Image::new(
-                image.as_raw(),
-                image.width(),
-                image.height(),
-            ))
-            .map_err(|error| error.to_string())
-    })
+    super::clipboard::write_image(
+        app,
+        tauri::image::Image::new_owned(image.as_raw().clone(), image.width(), image.height()),
+    )
     .await
-    .map_err(|error| error.to_string())?
 }
 
 /// Writes a validated Canvas PNG/JPEG to a selected path without blocking the UI thread.
@@ -635,9 +634,9 @@ mod tests {
     fn image_payload_validation() {
         assert!(decode_png("data:text/plain;base64,AAAA").is_err());
         assert!(decode_png("data:image/png;base64,AAAA").is_err());
-        let image = RgbaImage::from_pixel(2, 2, xcap::image::Rgba([12, 34, 56, 255]));
+        let image = RgbaImage::from_pixel(2, 2, image::Rgba([12, 34, 56, 255]));
         let mut png = Cursor::new(Vec::new());
-        xcap::image::DynamicImage::ImageRgba8(image.clone())
+        image::DynamicImage::ImageRgba8(image.clone())
             .write_to(&mut png, ImageFormat::Png)
             .unwrap();
         let data = format!(

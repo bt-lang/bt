@@ -430,11 +430,11 @@ pub fn write_linux_icon(output: &Path, source: Option<&Path>) -> Result<(), BtEr
         bytes.as_deref().unwrap_or(DEFAULT_BT_APP_ICON_BYTES),
         "Linux application icon",
     )?;
-    let image = xcap::image::RgbaImage::from_raw(icon.width(), icon.height(), icon.rgba().to_vec())
+    let image = image::RgbaImage::from_raw(icon.width(), icon.height(), icon.rgba().to_vec())
         .ok_or_else(|| BtError::Config("Invalid Linux application icon dimensions".into()))?;
     let mut encoded = std::io::Cursor::new(Vec::new());
     image
-        .write_to(&mut encoded, xcap::image::ImageFormat::Png)
+        .write_to(&mut encoded, image::ImageFormat::Png)
         .map_err(|error| {
             BtError::Config(format!(
                 "Failed to encode Linux application icon: {}",
