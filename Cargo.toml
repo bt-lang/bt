@@ -57,7 +57,7 @@ required-features = ["desktop"]
 # Used primarily to add Windows executable resources (metadata and icons).
 [build-dependencies]
 winresource = "0.1"
-tauri-utils = { version = "=2.9.3", features = ["build-2"] }
+tauri-utils = { version = "=2.10.0", features = ["build-2"] }
 serde = "1.0.211"
 serde_json = "1.0.132"
 
@@ -100,7 +100,7 @@ wasmparser = { version = "0.251.0", default-features = false, features = ["std"]
 wasmtime = { version = "46.0.1", default-features = false, features = ["cache", "cranelift", "runtime", "std"], optional = true }
 wasmtime-wasi = { version = "46.0.1", default-features = false, features = ["p1"], optional = true }
 notify = { version = "8.2.0", optional = true }
-tauri = { version = "=2.11.5", features = ["devtools", "image-ico", "macos-private-api", "tray-icon", "unstable"], optional = true }
+tauri = { version = "=2.11.6", features = ["devtools", "image-ico", "macos-private-api", "tray-icon", "unstable"], optional = true }
 tauri-runtime = { version = "=2.11.3", optional = true }
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -137,4 +137,4 @@ keyboard-types = { version = "=0.7.0", optional = true }
 gtk = { version = "=0.18.2", optional = true }
 
 [dev-dependencies]
-wat = { version = "=1.258.0", default-features = false }
+wat = { version = "=1.259.0", default-features = false }
