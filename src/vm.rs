@@ -38,7 +38,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
@@ -129,6 +129,110 @@ struct ValueOrigin {
     variable: Option<SymbolId>,
     /// If no definition was found in any scope when reading the variable.
     missing: bool,
+}
+
+/// Maximum aggregate allocation retained by idle register buffers in one VM.
+const FRAME_POOL_BYTES: usize = 1024 * 1024;
+/// Maximum number of idle frames, independent of recursion depth.
+const FRAME_POOL_FRAMES: usize = 32;
+
+/// Reusable frame storage; idle buffers never retain script values or source origins.
+#[derive(Default)]
+struct FrameBuffers {
+    /// Values addressed by bytecode registers.
+    registers: Vec<Value>,
+    /// Diagnostic provenance addressed by the same registers.
+    origins: Vec<Option<ValueOrigin>>,
+}
+
+impl FrameBuffers {
+    /// Counts actual retained capacity, including allocator growth beyond requested lengths.
+    fn capacity_bytes(&self) -> usize {
+        self.registers.capacity() * std::mem::size_of::<Value>()
+            + self.origins.capacity() * std::mem::size_of::<Option<ValueOrigin>>()
+    }
+}
+
+/// Bounded, VM-local frame reuse with no synchronization in the instruction loop.
+#[derive(Default)]
+struct FramePool {
+    /// Cleared buffers available to subsequent calls.
+    idle: Vec<FrameBuffers>,
+    /// Sum of capacities in `idle`, excluding currently executing frames.
+    bytes: usize,
+}
+
+impl FramePool {
+    /// Acquires independent storage for a call, preferring buffers that already fit.
+    fn acquire(&mut self, len: usize) -> FrameBuffers {
+        let index = self.idle.iter().rposition(|frame| {
+            frame.registers.capacity() >= len && frame.origins.capacity() >= len
+        });
+        let mut frame = match index {
+            Some(index) => self.idle.swap_remove(index),
+            None => self.idle.pop().unwrap_or_default(),
+        };
+        self.bytes -= frame.capacity_bytes();
+        frame.registers.resize(len, Value::Empty);
+        frame.origins.resize(len, None);
+        frame
+    }
+
+    /// Drops script references on every exit and retains only a bounded allocation budget.
+    fn recycle(&mut self, mut frame: FrameBuffers) {
+        frame.registers.clear();
+        frame.origins.clear();
+        let bytes = frame.capacity_bytes();
+        if self.idle.len() < FRAME_POOL_FRAMES && bytes <= FRAME_POOL_BYTES - self.bytes {
+            self.bytes += bytes;
+            self.idle.push(frame);
+        }
+    }
+}
+
+/// Associates live runtime objects with their defining chunks without owning the objects.
+#[derive(Clone)]
+struct OwnerRegistry<T> {
+    /// Weak identities also prevent an old entry from matching a reused allocation address.
+    entries: HashMap<usize, (Weak<T>, Rc<Chunk>)>,
+    /// Adaptive sweep threshold amortizes cleanup when many live objects are created.
+    next_sweep: usize,
+}
+
+impl<T> OwnerRegistry<T> {
+    /// Creates an empty registry with a small allowance for dead entries between sweeps.
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            next_sweep: 256,
+        }
+    }
+
+    /// Registers an object and periodically removes entries for released objects.
+    fn insert(&mut self, object: &Rc<T>, owner: Rc<Chunk>) {
+        if self.entries.len() >= self.next_sweep {
+            self.sweep();
+        }
+        self.entries
+            .insert(Rc::as_ptr(object) as usize, (Rc::downgrade(object), owner));
+    }
+
+    /// Reads the owner while the caller holds the corresponding object alive.
+    fn owner(&self, object: &Rc<T>) -> Option<Rc<Chunk>> {
+        self.entries
+            .get(&(Rc::as_ptr(object) as usize))
+            .map(|(_, owner)| owner.clone())
+    }
+
+    /// Releases dead bytecode owners and shrinks storage after a transient object burst.
+    fn sweep(&mut self) {
+        self.entries
+            .retain(|_, (object, _)| object.strong_count() != 0);
+        if self.entries.capacity() > self.entries.len().max(256).saturating_mul(4) {
+            self.entries.shrink_to(self.entries.len().max(256));
+        }
+        self.next_sweep = self.entries.len().saturating_mul(2).max(256);
+    }
 }
 
 /// TCP callback saved on the VM side.
@@ -794,17 +898,21 @@ pub struct Vm {
     execution_budget: Option<Arc<crate::io::ExecutionBudget>>,
     /// Maximum collected dynamic response bytes, absent outside bounded Web requests.
     output_limit: Option<usize>,
+    /// Cleared register allocations shared by sequential calls, bounded to one MiB.
+    frame_pool: FramePool,
+    /// Active bytecode frames; the outermost exit releases stale object owner entries.
+    active_frames: usize,
     /// Maps class instances to the bytecode chunks that define them.
     ///
     /// Method function IDs belong to the chunk that created the class. Calls such as
     /// `this.other_method()` must return to that owner chunk to resolve the ID correctly.
-    instance_chunks: HashMap<usize, Rc<Chunk>>,
+    instance_chunks: OwnerRegistry<RefCell<InstanceObject>>,
     /// Maps class values to the bytecode chunks that define them.
     ///
     /// Runtime `include()` writes class definitions to globals, but their method bytecode remains in
     /// the included chunk. Mapping the class member table to that owner prevents a later `DB::new()`
     /// from resolving method IDs against the main chunk.
-    class_chunks: HashMap<usize, Rc<Chunk>>,
+    class_chunks: OwnerRegistry<IndexMap<String, ClassMember>>,
     /// Maps global function names to the bytecode chunks that define them.
     ///
     /// An included `fn msg(){}` is stored in the shared global table, but its function ID is valid
@@ -913,8 +1021,10 @@ impl Vm {
             current_function: None,
             execution_budget: crate::io::current_execution_budget(),
             output_limit: None,
-            instance_chunks: HashMap::new(),
-            class_chunks: HashMap::new(),
+            frame_pool: FramePool::default(),
+            active_frames: 0,
+            instance_chunks: OwnerRegistry::new(),
+            class_chunks: OwnerRegistry::new(),
             global_function_chunks: HashMap::new(),
             #[cfg(feature = "extensions")]
             extension_manager: None,
@@ -1647,11 +1757,31 @@ impl Vm {
         let previous_function = self.current_function.clone();
         let previous_span = self.current_span.clone();
         self.current_function = function_name;
+        let mut frame = self.frame_pool.acquire(chunk.register_count as usize + 1);
+        self.active_frames += 1;
         let result = if self.execution_budget.is_some() {
-            self.execute_chunk_inner::<true>(chunk, locals, owner_hint)
+            self.execute_chunk_inner::<true>(
+                chunk,
+                locals,
+                owner_hint,
+                &mut frame.registers,
+                &mut frame.origins,
+            )
         } else {
-            self.execute_chunk_inner::<false>(chunk, locals, owner_hint)
+            self.execute_chunk_inner::<false>(
+                chunk,
+                locals,
+                owner_hint,
+                &mut frame.registers,
+                &mut frame.origins,
+            )
         };
+        self.frame_pool.recycle(frame);
+        self.active_frames -= 1;
+        if self.active_frames == 0 {
+            self.instance_chunks.sweep();
+            self.class_chunks.sweep();
+        }
         self.current_function = previous_function;
         self.current_span = previous_span;
         if pushed_source {
@@ -1666,10 +1796,10 @@ impl Vm {
         chunk: &Chunk,
         mut locals: Option<LocalScope>,
         owner_hint: Option<Rc<Chunk>>,
+        mut registers: &mut [Value],
+        mut origins: &mut [Option<ValueOrigin>],
     ) -> Result<ExecSignal, VmError> {
         let mut ip = 0usize;
-        let mut registers = vec![Value::Empty; chunk.register_count as usize + 1];
-        let mut origins = vec![None; chunk.register_count as usize + 1];
         let mut chunk_owner = owner_hint;
         let mut try_stack: Vec<TryHandler> = Vec::new();
         let budget = if BOUNDED {
@@ -1961,8 +2091,7 @@ impl Vm {
                             let owner = chunk_owner
                                 .get_or_insert_with(|| Rc::new(chunk.clone()))
                                 .clone();
-                            self.class_chunks
-                                .insert(Rc::as_ptr(class_members) as usize, owner);
+                            self.class_chunks.insert(class_members, owner);
                         }
                         Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
@@ -2395,6 +2524,8 @@ impl Vm {
             current_function: None,
             execution_budget: self.execution_budget.clone(),
             output_limit: self.output_limit,
+            frame_pool: FramePool::default(),
+            active_frames: 0,
             instance_chunks: self.instance_chunks.clone(),
             class_chunks: self.class_chunks.clone(),
             global_function_chunks: self.global_function_chunks.clone(),
@@ -3440,7 +3571,7 @@ impl Vm {
         *cell.borrow_mut() = Some(value);
     }
 
-    /// User function calls.
+    /// Executes a user function, moving supplied arguments into independent local cells.
     fn call_user_function_inner(
         &mut self,
         chunk: &Chunk,
@@ -3457,11 +3588,8 @@ impl Vm {
             function: self.current_function.clone(),
             throw_value: None,
         })?;
-        // Function locals use a dense slot table addressed directly by symbol ID.
-        //
-        // Symbol IDs are dense integers starting at zero, so `Vec<Option<Value>>` turns each local
-        // lookup into a bounds check plus an array access. `None` means the current local
-        // scope has no value, preserving the "fall back to globals" semantics.
+        // Dense symbol slots share cells only with escaped closures. Missing capture slots can
+        // fall back to globals; declared locals and absent parameters still read as `empty`.
         let mut locals = captures.unwrap_or_else(|| vec![None; function.chunk.symbols.len()]);
         if locals.len() < function.chunk.symbols.len() {
             locals.resize(function.chunk.symbols.len(), None);
@@ -3471,10 +3599,12 @@ impl Vm {
                 locals[index] = None;
             }
         }
-        for (index, param) in function.params.iter().enumerate() {
+        // The caller already cloned evaluated arguments from its registers. Move those owned
+        // values into parameters instead of copying string payloads a second time.
+        let mut args = args.into_iter();
+        for param in &function.params {
             let value = args
-                .get(index)
-                .cloned()
+                .next()
                 .or_else(|| param.default.as_ref().map(Value::clone_mutable_literal))
                 .unwrap_or(Value::Empty);
             Self::write_local_cell(&mut locals, param.symbol, value);
@@ -3519,9 +3649,8 @@ impl Vm {
             class_name: class_name.to_string(),
             members: instance,
         }));
-        let instance_id = Rc::as_ptr(&instance_ref) as usize;
         let owner = owner.unwrap_or_else(|| Rc::new(chunk.clone()));
-        self.instance_chunks.insert(instance_id, owner);
+        self.instance_chunks.insert(&instance_ref, owner);
         let instance = Value::Instance(instance_ref);
         let Some(member) = members.get(name) else {
             return Ok(instance);
@@ -5002,14 +5131,12 @@ impl Vm {
 
     /// Reads the defining bytecode block to which the class instance belongs.
     fn instance_owner_chunk(&self, instance: &Rc<RefCell<InstanceObject>>) -> Option<Rc<Chunk>> {
-        let instance_id = Rc::as_ptr(instance) as usize;
-        self.instance_chunks.get(&instance_id).cloned()
+        self.instance_chunks.owner(instance)
     }
 
     /// Reads the defined bytecode block to which the class value belongs.
     fn class_owner_chunk(&self, members: &Rc<IndexMap<String, ClassMember>>) -> Option<Rc<Chunk>> {
-        let class_id = Rc::as_ptr(members) as usize;
-        self.class_chunks.get(&class_id).cloned()
+        self.class_chunks.owner(members)
     }
 
     /// Calls the string `replace` method.
@@ -8332,6 +8459,159 @@ mod tests {
         Compiler::with_source_file(file, Path::new("."))
             .compile(&statements)
             .expect("test script should compile successfully")
+    }
+
+    /// Reused buffers release script references, reset origins, and obey both retention limits.
+    #[test]
+    fn frame_pool_releases_values_and_bounds_retained_capacity() {
+        let mut pool = FramePool::default();
+        let mut frame = pool.acquire(4);
+        let object = Rc::new(RefCell::new(IndexMap::new()));
+        let weak = Rc::downgrade(&object);
+        frame.registers[0] = Value::Object(object);
+        frame.origins[0] = Some(ValueOrigin {
+            span: 99,
+            variable: None,
+            missing: true,
+        });
+        let allocation = frame.registers.as_ptr();
+        pool.recycle(frame);
+        assert!(
+            weak.upgrade().is_none(),
+            "idle frames must not retain objects"
+        );
+        let frame = pool.acquire(4);
+        assert_eq!(allocation, frame.registers.as_ptr());
+        assert!(frame
+            .registers
+            .iter()
+            .all(|value| matches!(value, Value::Empty)));
+        assert!(frame.origins.iter().all(Option::is_none));
+        pool.recycle(frame);
+
+        let frames: Vec<_> = (0..FRAME_POOL_FRAMES + 8)
+            .map(|_| pool.acquire(4))
+            .collect();
+        for frame in frames {
+            pool.recycle(frame);
+        }
+        assert_eq!(pool.idle.len(), FRAME_POOL_FRAMES);
+        let oversized = pool.acquire(FRAME_POOL_BYTES / std::mem::size_of::<Value>() + 1);
+        pool.recycle(oversized);
+        assert!(pool.bytes <= FRAME_POOL_BYTES);
+        assert_eq!(
+            pool.bytes,
+            pool.idle
+                .iter()
+                .map(FrameBuffers::capacity_bytes)
+                .sum::<usize>()
+        );
+    }
+
+    /// Recursive calls and escaped captures remain independent after sequential frame reuse.
+    #[test]
+    fn recycled_frames_preserve_recursion_closures_and_defaults() {
+        assert_eq!(
+            run_test_source(
+                r#"
+fn sum(n) { if n <= 0 { return 0 }; n + sum(n - 1) }
+fn counter(start) { let n = start; fn next() { n += 1; n }; next }
+fn defaults(items = []) { items.push(1); items.len() }
+a = counter(10)
+b = counter(20)
+sum(3) === 6 && a() === 11 && b() === 21 && a() === 12 && defaults() === 1 && defaults() === 1
+"#
+            ),
+            Value::Bool(true)
+        );
+    }
+
+    /// Errors, throws, explicit exit, and request cancellation return empty buffers to the VM.
+    #[test]
+    fn recycled_frames_are_cleared_on_every_exit() {
+        for source in [
+            "fn fail() { let item = {}; missing + 1 }; fail()",
+            "fn fail() { let item = {}; throw 'failure' }; fail()",
+            "fn stop() { let item = {}; exit(1) }; stop()",
+            "fn done() { let item = {}; return item }; done()",
+        ] {
+            let mut vm = Vm::new();
+            let chunk = compile_test_entry(source);
+            let _ = vm.run(&chunk);
+            assert_eq!(vm.active_frames, 0);
+            assert!(!vm.frame_pool.idle.is_empty());
+            assert!(vm
+                .frame_pool
+                .idle
+                .iter()
+                .all(|frame| frame.registers.is_empty() && frame.origins.is_empty()));
+        }
+        let mut vm = Vm::new();
+        let budget = crate::io::ExecutionBudget::new(Duration::ZERO).unwrap();
+        vm.execution_budget = Some(budget);
+        assert!(vm.run(&compile_test_entry("1")).is_err());
+        assert_eq!(vm.active_frames, 0);
+        assert!(vm
+            .frame_pool
+            .idle
+            .iter()
+            .all(|frame| frame.registers.is_empty()));
+    }
+
+    /// Owner records survive while objects are live and release retired bytecode after cleanup.
+    #[test]
+    fn owner_registry_bounds_dead_records_and_releases_retired_chunks() {
+        let mut registry = OwnerRegistry::new();
+        let owner = Rc::new(compile_test_entry("1"));
+        let weak_owner = Rc::downgrade(&owner);
+        let live: Vec<_> = (0..1024).map(Rc::new).collect();
+        for object in &live {
+            registry.insert(object, owner.clone());
+        }
+        for index in 0..8192 {
+            registry.insert(&Rc::new(index), owner.clone());
+            assert!(registry.entries.len() <= 2 * (live.len() + 1));
+        }
+        registry.sweep();
+        assert_eq!(registry.entries.len(), live.len());
+        assert!(Rc::ptr_eq(&registry.owner(&live[0]).unwrap(), &owner));
+        drop(owner);
+        drop(live);
+        registry.sweep();
+        assert!(registry.entries.is_empty());
+        assert!(registry.entries.capacity() <= 1024);
+        assert!(weak_owner.upgrade().is_none());
+    }
+
+    /// Method owners remain valid after a burst of temporary instances and disappear when unused.
+    #[test]
+    fn resident_vm_reclaims_class_and_instance_owners() {
+        let mut vm = Vm::new();
+        let owner = Rc::new(compile_test_entry(
+            r#"
+class Counter {
+    pub value: 0
+    new(value) { this.value = value; this }
+    pub read() { this.value }
+}
+keep = Counter::new(42)
+for i in 1024 { transient = Counter::new(i) }
+transient = empty
+"#,
+        ));
+        let weak_owner = Rc::downgrade(&owner);
+        vm.run_with_value_owned(owner).unwrap();
+        assert_eq!(vm.instance_chunks.entries.len(), 1);
+        assert_eq!(vm.class_chunks.entries.len(), 1);
+        assert_eq!(
+            vm.run(&compile_test_entry("print keep.read()")).unwrap(),
+            "42"
+        );
+        vm.globals.remove("Counter");
+        vm.run(&compile_test_entry("keep = empty")).unwrap();
+        assert!(vm.instance_chunks.entries.is_empty());
+        assert!(vm.class_chunks.entries.is_empty());
+        assert!(weak_owner.upgrade().is_none());
     }
 
     /// Executes the test entry script but does not wait for background events.

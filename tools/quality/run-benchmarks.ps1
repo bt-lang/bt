@@ -396,6 +396,7 @@ if ($WebRequests -lt 1) {
 $Scenarios = @(
     [ordered]@{ name = "vm_arithmetic"; category = "vm"; script = "benches/vm-arithmetic.bt"; operations = 200000; unit = "loop" },
     [ordered]@{ name = "function_closure"; category = "vm"; script = "benches/function-closure.bt"; operations = 50000; unit = "call" },
+    [ordered]@{ name = "function_arguments"; category = "vm"; script = "benches/function-arguments.bt"; operations = 10000; unit = "call" },
     [ordered]@{ name = "object_array"; category = "runtime"; script = "benches/object-array.bt"; operations = 20000; unit = "item" },
     [ordered]@{ name = "stdlib_dispatch"; category = "stdlib"; script = "benches/stdlib-dispatch.bt"; operations = 30000; unit = "dispatch" },
     [ordered]@{ name = "include_cache"; category = "compiler"; script = "benches/include-cache.bt"; operations = 3000; unit = "include" },

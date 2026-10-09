@@ -1,0 +1,13 @@
+// Isolate argument transfer without adding another payload copy in the function body.
+fn accept_payload(payload) {
+    1
+}
+
+payload = 'x'.repeat(131072)
+total = 0
+for i in 10000 {
+    total += accept_payload(payload)
+}
+
+assert(total == 10000, 'function argument benchmark call count failed')
+assert(payload.len() == 131072, 'function argument benchmark changed caller value')

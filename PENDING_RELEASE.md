@@ -7,6 +7,8 @@ official website update page, then restore this file to this empty template.
 
 ## English
 
+- 2026-10-09: Reuse cleared VM register buffers within a per-VM limit of 1 MiB and 32 idle frames, and remove an extra argument-value copy when calling BT functions. Reclaim stale class and instance bytecode-owner records during object creation and after outermost execution, reducing retained memory in resident applications while preserving live method owners, closures, return values, and error locations. No syntax or API migration is required.
+
 - 2026-10-09: Reduce VM source-location and variable-lookup allocations while preserving diagnostics and local/closure precedence. Web requests now share a queue-inclusive execution deadline: expired queued scripts are skipped, BT loops and nested calls stop cooperatively, and sleep/HTTP/MySQL waits honor the remaining request budget. Buffered dynamic output is checked before appending; final returned response bodies are still checked before sending. Native blocking calls and external side effects cannot be forcibly interrupted or rolled back, and explicitly submitted background tasks keep their own lifecycle. Correct Web benchmark throughput accounting and add configurable concurrency and deadline/recovery acceptance checks.
 
 - 2026-09-26: Linux desktop applications now require native Wayland, with no X11/XWayland backend or fallback. Screenshot acquisition uses the Screenshot portal with bounded authorization, image decoding, and temporary-file cleanup; clipboard operations use asynchronous native GTK selection handling. Global shortcuts use GlobalShortcuts independently of window positioning and no longer initialize an X11 hotkey manager. Install a desktop launcher matching `app.id` and authorize the desktop requests. Packaged Linux apps can enable `app.single_instance` to forward later launches to the existing window through per-user ownership and bounded acknowledged IPC (32 KiB per request, 64 queued requests). Development builds disable optimization, debug symbols, and LTO while retaining incremental caching; the formal release profile is unchanged.
@@ -61,6 +63,8 @@ official website update page, then restore this file to this empty template.
   preserving the distinction from explicit `null`.
 
 ## 简体中文
+
+- 2026-10-09：复用已清空的 VM 寄存器缓冲，每个 VM 最多保留 1 MiB、32 个空闲帧，并消除调用 BT 函数时一次多余的参数值复制。在对象创建期间和最外层执行结束后清理失效的类与实例字节码归属记录，降低常驻应用的内存滞留，同时保留存活对象的方法归属、闭包、返回值和错误定位。无需迁移语法或 API。
 
 - 2026-10-09：减少 VM 源码位置和变量读取的分配，同时保留错误定位、局部变量与闭包的优先级。Web 请求现在共用包含排队时间的执行期限：过期排队脚本会被跳过，BT 循环和嵌套调用协作式停止，休眠及 HTTP/MySQL 等待遵循请求剩余时间。动态输出缓冲在追加前检查上限，最终返回的响应体仍在发送前检查。原生阻塞调用和外部副作用无法被强制中断或回滚，显式提交的后台任务保留独立生命周期。修正 Web 基准吞吐量计算，并新增可配置并发数与超时恢复验收。
 
