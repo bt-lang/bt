@@ -1,7 +1,7 @@
 //! BT register-based bytecode virtual machine.
 //!
-//! VM takes `Chunk` as input and executes instructions sequentially. At the current stage, only basic variable environment and arithmetic output are implemented.
-//! Subsequent arrays, objects, function calls, closures, and coroutines should continue to be extended on this execution core.
+//! Executes compiled chunks with register values, local and closure cells, and synchronous library dispatch.
+//! Web request frames add cooperative deadlines; ordinary CLI and desktop frames use the unchecked instruction loop.
 
 use crate::bytecode::{
     Chunk, Instruction, Register, SourceSpan, SymbolId, BYTECODE_FORMAT_VERSION,
@@ -40,7 +40,6 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
-#[cfg(feature = "extensions")]
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -106,7 +105,7 @@ impl VmError {
     /// Runtime errors already carry a file, line, and column. This helper also reads the matching
     /// source line and places `^` under the offending column, so users do not have to count spaces.
     fn format_source_hint(span: &SourceSpan) -> String {
-        let Ok(source) = std::fs::read_to_string(&span.file) else {
+        let Ok(source) = std::fs::read_to_string(span.file.as_ref()) else {
             return String::new();
         };
         let Some(line_text) = source.lines().nth(span.line.saturating_sub(1)) else {
@@ -122,12 +121,12 @@ impl VmError {
 ///
 /// A value alone is not enough to diagnose a runtime error. Keeping the variable name and read
 /// location lets errors in expressions such as `a + b + c` point to the missing `c`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 struct ValueOrigin {
-    /// Value comes from.
-    span: SourceSpan,
-    /// The variable name that the value comes from, empty if it is a non-variable expression.
-    variable: Option<String>,
+    /// Instruction index in the executing chunk; materialized only on an error.
+    span: usize,
+    /// Symbol in the executing chunk, absent for ordinary expressions.
+    variable: Option<SymbolId>,
     /// If no definition was found in any scope when reading the variable.
     missing: bool,
 }
@@ -791,6 +790,10 @@ pub struct Vm {
     current_span: Option<SourceSpan>,
     /// Name of the function currently being executed.
     current_function: Option<String>,
+    /// Optional request budget captured once; ordinary CLI execution uses an unchecked loop.
+    execution_budget: Option<Arc<crate::io::ExecutionBudget>>,
+    /// Maximum collected dynamic response bytes, absent outside bounded Web requests.
+    output_limit: Option<usize>,
     /// Maps class instances to the bytecode chunks that define them.
     ///
     /// Method function IDs belong to the chunk that created the class. Calls such as
@@ -908,6 +911,8 @@ impl Vm {
             source_stack: Vec::new(),
             current_span: None,
             current_function: None,
+            execution_budget: crate::io::current_execution_budget(),
+            output_limit: None,
             instance_chunks: HashMap::new(),
             class_chunks: HashMap::new(),
             global_function_chunks: HashMap::new(),
@@ -1114,6 +1119,36 @@ impl Vm {
         self.web_response = Some(response);
     }
 
+    /// Limits buffered response output before appending bytes, preserving CLI output semantics.
+    pub fn set_output_limit(&mut self, limit: usize) {
+        self.output_limit = Some(limit);
+    }
+
+    /// Appends one complete output item only when it fits the request's response budget.
+    fn append_output(&mut self, text: &str, newline: bool, ip: usize) -> Result<(), VmError> {
+        let size = self
+            .output
+            .len()
+            .saturating_add(text.len())
+            .saturating_add(usize::from(newline));
+        if let Some(limit) = self.output_limit {
+            if size > limit {
+                return Err(self.error(
+                    ip,
+                    format!(
+                        "Web response body size of {} bytes exceeds the {}-byte limit",
+                        size, limit
+                    ),
+                ));
+            }
+        }
+        self.output.push_str(text);
+        if newline {
+            self.output.push('\n');
+        }
+        Ok(())
+    }
+
     /// Reads the currently collected script output.
     pub fn output(&self) -> &str {
         &self.output
@@ -1185,7 +1220,7 @@ impl Vm {
             let signal = vm.execute_chunk(chunk, None, None, None)?;
             if let ExecSignal::Exit(value) = signal {
                 if vm.output.is_empty() {
-                    vm.output.push_str(&value.to_output_string());
+                    vm.append_output(&value.to_output_string(), false, 0)?;
                 }
             } else if let ExecSignal::Throw(value) = signal {
                 return Err(vm.throw_error(0, value));
@@ -1597,7 +1632,7 @@ impl Vm {
         }
     }
 
-    /// Executes a bytecode chunk.
+    /// Executes a bytecode chunk and selects request checkpoints once per call frame.
     ///
     /// With no local scope this runs the main program against globals. With a local scope it runs a
     /// function, reading and writing locals first and falling back to globals when a name is absent.
@@ -1610,17 +1645,23 @@ impl Vm {
     ) -> Result<ExecSignal, VmError> {
         let pushed_source = self.push_source_frame(chunk);
         let previous_function = self.current_function.clone();
+        let previous_span = self.current_span.clone();
         self.current_function = function_name;
-        let result = self.execute_chunk_inner(chunk, locals, owner_hint);
+        let result = if self.execution_budget.is_some() {
+            self.execute_chunk_inner::<true>(chunk, locals, owner_hint)
+        } else {
+            self.execute_chunk_inner::<false>(chunk, locals, owner_hint)
+        };
         self.current_function = previous_function;
+        self.current_span = previous_span;
         if pushed_source {
             self.source_stack.pop();
         }
         result
     }
 
-    /// Executes the bytecode block body.
-    fn execute_chunk_inner(
+    /// Executes bytecode with budget checks compiled out of ordinary CLI/App frames.
+    fn execute_chunk_inner<const BOUNDED: bool>(
         &mut self,
         chunk: &Chunk,
         mut locals: Option<LocalScope>,
@@ -1631,9 +1672,25 @@ impl Vm {
         let mut origins = vec![None; chunk.register_count as usize + 1];
         let mut chunk_owner = owner_hint;
         let mut try_stack: Vec<TryHandler> = Vec::new();
+        let budget = if BOUNDED {
+            self.execution_budget.clone()
+        } else {
+            None
+        };
+        let mut checkpoint = 0u8;
 
         while ip < chunk.code.len() {
             self.current_span = chunk.spans.get(ip).cloned().flatten();
+            if BOUNDED {
+                // Check every 256 instructions and before calls. Nested frames check at entry,
+                // preventing recursion or short-loop calls from escaping the same deadline.
+                if checkpoint == 0 || matches!(chunk.code[ip], Instruction::Call { .. }) {
+                    if let Some(budget) = &budget {
+                        budget.check().map_err(|message| self.error(ip, message))?;
+                    }
+                }
+                checkpoint = checkpoint.wrapping_add(1);
+            }
             let step = (|| -> Result<ExecStep, VmError> {
                 match &chunk.code[ip] {
                     Instruction::LoadConst { dst, constant } => {
@@ -1645,7 +1702,7 @@ impl Vm {
                                 self.error(ip, "constant pool subscript out of bounds")
                             })?;
                         Self::write_register(&mut registers, *dst, value, ip)?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::ExpandTemplate { dst, src } => {
                         let value = Self::read_register(&registers, *src, ip)?;
@@ -1656,7 +1713,7 @@ impl Vm {
                         };
                         let text = self.expand_template(chunk, locals.as_ref(), template, ip)?;
                         Self::write_register(&mut registers, *dst, Value::Str(text), ip)?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::Move { dst, src } => {
                         let value = Self::read_register(&registers, *src, ip)?.clone();
@@ -1673,29 +1730,24 @@ impl Vm {
                                 .map(|cell| cell.borrow().clone().unwrap_or(Value::Empty))
                                 .or_else(|| chunk.is_local(*symbol).then_some(Value::Empty))
                         });
-                        let global_value = match self.globals.get(name) {
+                        let resolved = local_value.or_else(|| match self.globals.get(name) {
                             Some(Value::Function(function_id)) => self
                                 .global_function_chunks
                                 .get(name)
                                 .map(|owner| Value::BoundFunction(*function_id, owner.clone()))
-                                .or_else(|| Some(Value::Function(*function_id))),
+                                .or(Some(Value::Function(*function_id))),
                             Some(value) => Some(value.clone()),
-                            None => None,
-                        };
-                        let native_value =
-                            Self::native_function(name).or_else(|| Self::native_constant(name));
-                        let missing = local_value.is_none()
-                            && global_value.is_none()
-                            && native_value.is_none();
-                        let value = local_value
-                            .or(global_value)
-                            .or(native_value)
-                            .unwrap_or(Value::Empty);
+                            None => {
+                                Self::native_function(name).or_else(|| Self::native_constant(name))
+                            }
+                        });
+                        let missing = resolved.is_none();
+                        let value = resolved.unwrap_or(Value::Empty);
                         Self::write_register(&mut registers, *dst, value, ip)?;
                         Self::write_origin(
                             &mut origins,
                             *dst,
-                            self.variable_origin(name.to_string(), missing),
+                            self.variable_origin(ip, *symbol, missing),
                             ip,
                         )?;
                     }
@@ -1742,6 +1794,7 @@ impl Vm {
                         let right = Self::read_register(&registers, *rhs, ip)?;
                         let value = Self::eval_binary(op, left, right).map_err(|message| {
                             self.binary_error(
+                                chunk,
                                 ip,
                                 op,
                                 left,
@@ -1752,7 +1805,7 @@ impl Vm {
                             )
                         })?;
                         Self::write_register(&mut registers, *dst, value, ip)?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::Increment { dst, src, delta } => {
                         let current = Self::read_register(&registers, *src, ip)?;
@@ -1777,19 +1830,19 @@ impl Vm {
                             }
                         };
                         Self::write_register(&mut registers, *dst, value, ip)?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::Not { dst, src } => {
                         let value = !Self::read_register(&registers, *src, ip)?.is_truthy();
                         Self::write_register(&mut registers, *dst, Value::Bool(value), ip)?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::BitNot { dst, src } => {
                         let value = Self::read_register(&registers, *src, ip)?
                             .bitwise_not()
                             .map_err(|message| self.error(ip, message))?;
                         Self::write_register(&mut registers, *dst, value, ip)?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::MakeArray { dst, items } => {
                         let mut values = Vec::with_capacity(items.len());
@@ -1802,7 +1855,7 @@ impl Vm {
                             Value::Array(Rc::new(RefCell::new(values))),
                             ip,
                         )?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::MakeObject { dst, entries } => {
                         let mut values = IndexMap::new();
@@ -1825,27 +1878,31 @@ impl Vm {
                             Value::Object(Rc::new(RefCell::new(values))),
                             ip,
                         )?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::GetProperty { dst, object, key } => {
                         let object_register = *object;
                         let object = Self::read_register(&registers, object_register, ip)?;
                         let key = Self::read_register(&registers, *key, ip)?;
-                        let allow_private =
-                            Self::is_this_origin(Self::read_origin(&origins, object_register));
+                        let allow_private = Self::is_this_origin(
+                            chunk,
+                            Self::read_origin(&origins, object_register),
+                        );
                         let value = self
                             .get_property(object, key, allow_private)
                             .map_err(|message| self.error(ip, message))?;
                         Self::write_register(&mut registers, *dst, value, ip)?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::SetProperty { object, key, value } => {
                         let object_register = *object;
                         let object = Self::read_register(&registers, object_register, ip)?;
                         let key = Self::read_register(&registers, *key, ip)?;
                         let value = Self::read_register(&registers, *value, ip)?.clone();
-                        let allow_private =
-                            Self::is_this_origin(Self::read_origin(&origins, object_register));
+                        let allow_private = Self::is_this_origin(
+                            chunk,
+                            Self::read_origin(&origins, object_register),
+                        );
                         Self::set_property(object, key, value, allow_private)
                             .map_err(|message| self.error(ip, message))?;
                     }
@@ -1869,7 +1926,7 @@ impl Vm {
                             Value::Function(function_id)
                         };
                         Self::write_register(&mut registers, *dst, value, ip)?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::MakeClass { dst, name, members } => {
                         let name = chunk
@@ -1907,7 +1964,7 @@ impl Vm {
                             self.class_chunks
                                 .insert(Rc::as_ptr(class_members) as usize, owner);
                         }
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::IterInit { dst, iterable } => {
                         let iterable = Self::read_register(&registers, *iterable, ip)?;
@@ -1919,7 +1976,7 @@ impl Vm {
                             Value::Iterator(Rc::new(RefCell::new(state))),
                             ip,
                         )?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::CountInit { dst, count, step } => {
                         let count = Self::read_register(&registers, *count, ip)?;
@@ -1934,7 +1991,7 @@ impl Vm {
                             Value::Iterator(Rc::new(RefCell::new(state))),
                             ip,
                         )?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::RangeInit {
                         dst,
@@ -1955,7 +2012,7 @@ impl Vm {
                             Value::Iterator(Rc::new(RefCell::new(state))),
                             ip,
                         )?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::IterNext {
                         iterator,
@@ -2025,7 +2082,7 @@ impl Vm {
                         }
                         let value = self.call_value(chunk, &callee, values, ip)?;
                         Self::write_register(&mut registers, *dst, value, ip)?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(), ip)?;
+                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
                     Instruction::Jump { target } => {
                         return Ok(ExecStep::Jump(*target as usize));
@@ -2062,10 +2119,7 @@ impl Vm {
                     }
                     Instruction::Print { src, newline } => {
                         let value = Self::read_register(&registers, *src, ip)?;
-                        self.output.push_str(&value.to_output_string());
-                        if *newline {
-                            self.output.push('\n');
-                        }
+                        self.append_output(&value.to_output_string(), *newline, ip)?;
                     }
                     Instruction::Pop { src } => {
                         let _ = Self::read_register(&registers, *src, ip)?;
@@ -2276,7 +2330,7 @@ impl Vm {
         ip: usize,
     ) -> Result<Rc<Chunk>, VmError> {
         let key = TemplateFragmentCacheKey {
-            file: span.file.clone(),
+            file: span.file.to_string(),
             line: span.line,
             column: span.column,
             is_script,
@@ -2312,7 +2366,7 @@ impl Vm {
         } else {
             "template expression"
         };
-        Compiler::with_source_file(span.file.clone(), Self::template_base_dir(&span.file))
+        Compiler::with_source_file(span.file.to_string(), Self::template_base_dir(&span.file))
             .compile(&statements)
             .map_err(|err| self.error(ip, format!("{} compilation failed: {}", kind, err)))
     }
@@ -2339,6 +2393,8 @@ impl Vm {
             source_stack: self.source_stack.clone(),
             current_span: None,
             current_function: None,
+            execution_budget: self.execution_budget.clone(),
+            output_limit: self.output_limit,
             instance_chunks: self.instance_chunks.clone(),
             class_chunks: self.class_chunks.clone(),
             global_function_chunks: self.global_function_chunks.clone(),
@@ -2477,7 +2533,7 @@ impl Vm {
     fn template_span(&self, template: &str, offset: usize) -> SourceSpan {
         let Some(base) = &self.current_span else {
             return SourceSpan {
-                file: "<template>".to_string(),
+                file: "<template>".into(),
                 line: 1,
                 column: 1,
             };
@@ -6564,7 +6620,7 @@ impl Vm {
             "eval" => return self.call_eval(args, ip),
             "exit" => {
                 let value = args.first().cloned().unwrap_or(Value::Empty);
-                self.output.push_str(&value.to_output_string());
+                self.append_output(&value.to_output_string(), false, ip)?;
                 self.exit_value = Some(value.clone());
                 return Ok(value);
             }
@@ -6655,7 +6711,7 @@ impl Vm {
         matches!(name, "status" | "output" | "child" | "wait")
     }
 
-    /// Executes sleep() and applies the default I/O timeout limit on web requests.
+    /// Executes sleep() within the remaining request budget, or normally outside Web requests.
     fn call_sleep(&self, args: Vec<Value>, ip: usize) -> Result<Value, VmError> {
         let millis = args.first().map(Value::to_i64_lossy).unwrap_or(0).max(0) as u64;
         if self.is_web_request() {
@@ -6672,7 +6728,13 @@ impl Vm {
                 ));
             }
         }
-        std::thread::sleep(Duration::from_millis(millis));
+        if let Some(budget) = &self.execution_budget {
+            budget
+                .sleep(Duration::from_millis(millis))
+                .map_err(|message| self.error(ip, message))?;
+        } else {
+            std::thread::sleep(Duration::from_millis(millis));
+        }
         Ok(Value::Empty)
     }
 
@@ -6713,7 +6775,7 @@ impl Vm {
     /// track nesting to the matching closing parenthesis. Returning `None` lets diagnostics fall back cleanly.
     fn current_assert_statement(&self) -> Option<String> {
         let span = self.current_span.as_ref()?;
-        let source = std::fs::read_to_string(&span.file).ok()?;
+        let source = std::fs::read_to_string(span.file.as_ref()).ok()?;
         let line = source.lines().nth(span.line.saturating_sub(1))?;
         Self::extract_assert_statement(line, span.column)
     }
@@ -7517,26 +7579,28 @@ impl Vm {
     }
 
     /// Determines whether the register value comes from `this` of the current function.
-    fn is_this_origin(origin: Option<&ValueOrigin>) -> bool {
+    fn is_this_origin(chunk: &Chunk, origin: Option<&ValueOrigin>) -> bool {
         matches!(
-            origin.and_then(|origin| origin.variable.as_deref()),
+            origin
+                .and_then(|origin| origin.variable)
+                .and_then(|symbol| chunk.symbols.name(symbol)),
             Some("this")
         )
     }
 
     /// Constructs an ordinary expression source using the current instruction position.
-    fn span_origin(&self) -> Option<ValueOrigin> {
-        self.current_span.clone().map(|span| ValueOrigin {
-            span,
+    fn span_origin(&self, ip: usize) -> Option<ValueOrigin> {
+        self.current_span.as_ref().map(|_| ValueOrigin {
+            span: ip,
             variable: None,
             missing: false,
         })
     }
 
     /// Constructs a variable read source using the current instruction position.
-    fn variable_origin(&self, variable: String, missing: bool) -> Option<ValueOrigin> {
-        self.current_span.clone().map(|span| ValueOrigin {
-            span,
+    fn variable_origin(&self, ip: usize, variable: SymbolId, missing: bool) -> Option<ValueOrigin> {
+        self.current_span.as_ref().map(|_| ValueOrigin {
+            span: ip,
             variable: Some(variable),
             missing,
         })
@@ -7548,6 +7612,7 @@ impl Vm {
     /// VM fills in this part of the context through the register source, giving priority to prompting the variable name and the column where the variable is located.
     fn binary_error(
         &self,
+        chunk: &Chunk,
         ip: usize,
         op: &TokenKind,
         left: &Value,
@@ -7559,7 +7624,10 @@ impl Vm {
         let invalid_operand =
             Self::invalid_numeric_operand(op, left, right, left_origin, right_origin);
         if let Some((value, origin)) = invalid_operand {
-            if let Some(variable) = &origin.variable {
+            if let Some(variable) = origin
+                .variable
+                .and_then(|symbol| chunk.symbols.name(symbol))
+            {
                 let value = value.to_string();
                 let requirement = if fallback.contains("integer") {
                     "integer"
@@ -7577,9 +7645,23 @@ impl Vm {
                         variable, value, requirement, requirement
                     )
                 };
-                return self.error_at(ip, message, origin.span.clone());
+                return self.error_at(
+                    ip,
+                    message,
+                    chunk.spans[origin.span]
+                        .as_ref()
+                        .expect("value origin has a source span")
+                        .clone(),
+                );
             }
-            return self.error_at(ip, fallback, origin.span.clone());
+            return self.error_at(
+                ip,
+                fallback,
+                chunk.spans[origin.span]
+                    .as_ref()
+                    .expect("value origin has a source span")
+                    .clone(),
+            );
         }
         self.error(ip, fallback)
     }
@@ -10305,7 +10387,7 @@ for i in 0..10 step -2 {
         assert!(err.message.contains("escapes project root"));
     }
 
-    /// When the extension directory exists in the default build, it should be clearly prompted that the current build does not enable extension capabilities.
+    /// A lightweight build must explain why a project extension directory cannot be loaded.
     #[cfg(not(feature = "extensions"))]
     #[test]
     fn disabled_extension_feature_rejects_project_extensions_dir() {
@@ -10314,7 +10396,10 @@ for i in 0..10 step -2 {
         let mut vm = Vm::with_project_root(&project.root);
         let err = vm.load_project_extensions().unwrap_err();
 
-        assert!(err.contains("expansion capability not enabled"));
+        assert!(
+            err.contains("does not enable extension capabilities"),
+            "{err}"
+        );
     }
 
     /// Array/Object clone should copy the mutable container recursively to avoid nested objects continuing to share references.
@@ -10914,7 +10999,7 @@ for i in 0..10 step -2 {
         VM_CACHE_METRICS.with(|metrics| *metrics.borrow_mut() = VmCacheMetrics::default());
         let vm = Vm::new();
         let span = SourceSpan {
-            file: "web/tpl/test.bt".to_string(),
+            file: "web/tpl/test.bt".into(),
             line: 1,
             column: 1,
         };
@@ -11177,5 +11262,89 @@ for i in 0..10 step -2 {
             response.borrow().file.as_deref(),
             Some(bt_path::path_text(&project.root.join("common/file.txt")).as_str())
         );
+    }
+
+    /// CPU-only loops and nested calls terminate at a shared request deadline.
+    #[test]
+    fn request_deadline_interrupts_loops_and_nested_calls() {
+        for source in [
+            "while true {}",
+            "fn spin() { while true {} } spin()",
+            "try { while true {} } catch err { print 'caught' }",
+        ] {
+            let chunk = compile_test_entry(source);
+            let budget = crate::io::ExecutionBudget::new(Duration::from_millis(10)).unwrap();
+            let _scope = budget.enter();
+            let mut vm = Vm::new();
+            let error = vm.run(&chunk).unwrap_err();
+            assert!(error.message.contains("exceeds 10 milliseconds"), "{error}");
+            assert!(vm.output().is_empty());
+        }
+    }
+
+    /// Nested templates inherit cancellation instead of creating an unlimited child VM.
+    #[test]
+    fn template_vm_inherits_request_deadline() {
+        let budget = crate::io::ExecutionBudget::new(Duration::ZERO).unwrap();
+        let _scope = budget.enter();
+        let vm = Vm::new();
+        let mut child = vm.template_child_vm();
+        let error = child
+            .run(&compile_test_entry("print 'unreachable'"))
+            .unwrap_err();
+        assert!(error.message.contains("exceeds 0 milliseconds"));
+        assert!(child.output().is_empty());
+    }
+
+    /// Output checks happen before appending, preserve UTF-8 byte limits and stop side effects.
+    #[test]
+    fn response_output_limit_stops_before_following_statements() {
+        for source in ["print '中文'", "println '12345'", "exit('123456')"] {
+            let mut vm = Vm::new();
+            vm.set_output_limit(5);
+            let error = vm
+                .run(&compile_test_entry(&format!("{source}\nafter = true")))
+                .unwrap_err();
+            assert!(error.message.contains("5-byte limit"));
+            assert!(vm.output().is_empty());
+            assert!(vm.get_global("after").is_none());
+        }
+        let mut vm = Vm::new();
+        vm.set_output_limit(5);
+        assert_eq!(
+            vm.run(&compile_test_entry("print '12345'")).unwrap(),
+            "12345"
+        );
+        assert_eq!(vm.template_child_vm().output_limit, Some(5));
+    }
+
+    /// Returning from a nested call restores the caller location and missing-variable name.
+    #[test]
+    fn compact_origins_preserve_caller_error_locations() {
+        let error = run_test_source_error("fn value() { 1 }\nvalue() * missing");
+        assert!(error.message.contains("variable `missing` is undefined"));
+        let span = error.span.unwrap();
+        assert_eq!(span.file.as_ref(), "test.bt");
+        assert_eq!(span.line, 2);
+        assert_eq!(span.column, 11);
+    }
+
+    /// Local empty/null values and closures retain precedence over globals and native functions.
+    #[test]
+    fn local_lookup_short_circuit_preserves_shadowing() {
+        let result = run_test_source(
+            r#"
+value = 99
+fn choose(value, string) { [value, string] }
+a = choose(empty, null)
+fn capture(value) { return fn() { value } }
+b = capture(7)
+assert(a[0] == empty)
+assert(a[1] == null)
+assert(b() == 7)
+return true
+"#,
+        );
+        assert_eq!(result, Value::Bool(true));
     }
 }

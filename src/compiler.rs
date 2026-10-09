@@ -635,7 +635,7 @@ impl Compiler {
             file: if span.file.is_empty() {
                 source_file.to_string()
             } else {
-                span.file
+                span.file.to_string()
             },
             line: span.line,
             column: span.column,
@@ -646,7 +646,7 @@ impl Compiler {
     /// Reads a statement's source location, falling back to the start of the file.
     fn span_for_statement(source_file: &str, statement: &Statement) -> SourceSpan {
         Self::span_from_statement(statement).unwrap_or_else(|| SourceSpan {
-            file: source_file.to_string(),
+            file: source_file.into(),
             line: 1,
             column: 1,
         })
@@ -1002,7 +1002,7 @@ impl Compiler {
     /// Extracts the source code location from the expression.
     fn span_from_expr(expr: &PosExpr) -> SourceSpan {
         SourceSpan {
-            file: expr.file.clone(),
+            file: expr.file.as_str().into(),
             line: expr.line,
             column: expr.column,
         }
@@ -1682,7 +1682,7 @@ impl Compiler {
                         .as_ref()
                         .map(Self::span_from_expr)
                         .unwrap_or_else(|| SourceSpan {
-                            file: function_compiler.chunk.source_file.clone(),
+                            file: function_compiler.chunk.source_file.as_str().into(),
                             line: 1,
                             column: 1,
                         }),
@@ -1775,7 +1775,7 @@ impl Compiler {
             let span =
                 Self::span_from_statement(body.last().expect("Function body cannot be empty"))
                     .unwrap_or_else(|| SourceSpan {
-                        file: "<unknown>".to_string(),
+                        file: "<unknown>".into(),
                         line: 0,
                         column: 0,
                     });

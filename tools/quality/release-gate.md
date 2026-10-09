@@ -98,3 +98,16 @@ Generated quality JSON under `target/quality/` is local evidence or a CI
 artifact and must not be committed.
 
 [Simplified Chinese](release-gate.zh-CN.md)
+
+## Local performance iteration
+
+Use the incremental development build for ordinary performance work; reserve release builds for explicitly requested version releases. Compare the same profile, machine, workload and concurrency, and keep both executable hashes and JSON reports. Development timings do not predict production throughput. The benchmark script defaults to `target/debug/bt`; `-Build` runs `cargo build --locked --bin bt`. Formal release gates continue to pass the release executable explicitly.
+
+```powershell
+tools/quality/run-benchmarks.ps1 -SelfTest
+tools/quality/run-benchmarks.ps1 -Build -Iterations 7 -WebConcurrency 1 -Output target/quality/performance-serial.json
+tools/quality/run-benchmarks.ps1 -Iterations 7 -WebConcurrency 16 -WebRequests 1000 -Output target/quality/performance-concurrent.json
+python tools/quality/verify-web-deadlines.py --bt target/debug/bt.exe
+```
+
+Use `target/debug/bt` for the acceptance executable on Unix. `WebConcurrency` defaults to `1` and accepts `1..256`; `WebRequests` counts all requests across workers. Web latency samples measure individual requests; throughput divides completed requests by the complete measured wall-time window, including client harness overhead. CLI timings include startup, compilation and execution. `total_operations`, `total_elapsed_ms`, `web_concurrency` and `bt_sha256` make reports auditable. Any HTTP error fails the benchmark instead of being counted as successful throughput. The old Web throughput calculation multiplied results by the request count; older throughput values are not comparable.

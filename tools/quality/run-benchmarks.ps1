@@ -5,6 +5,9 @@ param(
     [int]$TimeoutSeconds = 30,
     [int]$WebRequests = 80,
     [int]$WebWarmupRequests = 5,
+    [ValidateRange(1, 256)]
+    [int]$WebConcurrency = 1,
+    [switch]$SelfTest,
     [switch]$Build,
     [string]$Output = ""
 )
@@ -21,7 +24,7 @@ if ($env:OS -eq "Windows_NT") {
 }
 
 if ([string]::IsNullOrWhiteSpace($BtPath)) {
-    $BtPath = Join-Path $RepoRoot ("target/release/bt" + $ExeSuffix)
+    $BtPath = Join-Path $RepoRoot ("target/debug/bt" + $ExeSuffix)
 }
 
 if ([string]::IsNullOrWhiteSpace($Output)) {
@@ -61,12 +64,16 @@ function Start-BtResident {
     return $process
 }
 
+<# .SYNOPSIS
+Stops only the process started by this benchmark and waits briefly for its resources to close.
+#>
 function Stop-BtProcess {
     param([System.Diagnostics.Process]$Process)
 
     if ($null -ne $Process -and -not $Process.HasExited) {
         try {
             $Process.Kill()
+            [void]$Process.WaitForExit(5000)
         } catch {
         }
     }
@@ -236,6 +243,9 @@ function Get-PlatformInfo {
     }
 }
 
+<# .SYNOPSIS
+Reads a successful response and disposes it before returning its body.
+#>
 function Invoke-HttpGet {
     param(
         [System.Net.Http.HttpClient]$Client,
@@ -243,11 +253,15 @@ function Invoke-HttpGet {
     )
 
     $response = $Client.GetAsync($Url).GetAwaiter().GetResult()
-    $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    if (-not $response.IsSuccessStatusCode) {
-        throw "http request failed: $Url, status $([int]$response.StatusCode), body $body"
+    try {
+        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        if (-not $response.IsSuccessStatusCode) {
+            throw "http request failed: $Url, status $([int]$response.StatusCode), body $body"
+        }
+        return $body
+    } finally {
+        $response.Dispose()
     }
-    return $body
 }
 
 function Invoke-MeasuredHttpGet {
@@ -287,12 +301,16 @@ function Wait-WebReady {
     return $false
 }
 
+<# .SYNOPSIS
+Summarizes per-run latency and divides total completed operations by measured wall time.
+#>
 function New-ScenarioResult {
     param(
         [System.Collections.Specialized.OrderedDictionary]$Scenario,
         [object[]]$Runs,
         [int]$Iterations,
-        [int]$Warmup
+        [int]$Warmup,
+        [double]$TotalElapsedMs = 0
     )
 
     $times = @($Runs | ForEach-Object { [double]$_.elapsed_ms })
@@ -302,8 +320,12 @@ function New-ScenarioResult {
     $peakWorkingSetMb = [Math]::Round((@($Runs | ForEach-Object { [double]$_.peak_working_set_mb }) | Measure-Object -Maximum).Maximum, 2)
     $maxThreads = (@($Runs | ForEach-Object { [int]$_.max_threads }) | Measure-Object -Maximum).Maximum
     $throughput = 0
-    if ($avgMs -gt 0) {
-        $throughput = [Math]::Round(([double]$Scenario.operations) / ($avgMs / 1000.0), 2)
+    if ($TotalElapsedMs -le 0) {
+        $TotalElapsedMs = ($times | Measure-Object -Sum).Sum
+    }
+    $totalOperations = [double]$Scenario.operations * $Runs.Count
+    if ($TotalElapsedMs -gt 0) {
+        $throughput = [Math]::Round($totalOperations / ($TotalElapsedMs / 1000.0), 2)
     }
 
     [ordered]@{
@@ -326,17 +348,33 @@ function New-ScenarioResult {
         p95_ms = Get-Percentile -Values $times -Percentile 95
         p99_ms = Get-Percentile -Values $times -Percentile 99
         throughput_per_sec = $throughput
+        total_operations = $totalOperations
+        total_elapsed_ms = [Math]::Round($TotalElapsedMs, 3)
         peak_working_set_mb = $peakWorkingSetMb
         max_threads = $maxThreads
     }
 }
 
+if ($SelfTest) {
+    $scenario = [ordered]@{ name = 'web'; category = 'web'; script = ''; operations = 1; unit = 'request' }
+    $samples = @(1..80 | ForEach-Object { [ordered]@{ elapsed_ms = 10; peak_working_set_mb = 0; max_threads = 0 } })
+    $serial = New-ScenarioResult -Scenario $scenario -Runs $samples -Iterations 80 -Warmup 0
+    $parallel = New-ScenarioResult -Scenario $scenario -Runs $samples -Iterations 80 -Warmup 0 -TotalElapsedMs 200
+    $scenario.operations = 200000
+    $process = New-ScenarioResult -Scenario $scenario -Runs $samples -Iterations 80 -Warmup 0
+    if ($serial.throughput_per_sec -ne 100 -or $parallel.throughput_per_sec -ne 400 -or $process.throughput_per_sec -ne 20000000) {
+        throw 'Benchmark throughput regression: count operations once and divide by the measured wall-time window.'
+    }
+    Write-Host 'Benchmark statistics self-test passed.'
+    return
+}
+
 if ($Build) {
     Push-Location $RepoRoot
     try {
-        cargo build --release --bin bt
+        cargo build --locked --bin bt
         if ($LASTEXITCODE -ne 0) {
-            throw "cargo build --release --bin bt failed"
+            throw "cargo build --locked --bin bt failed"
         }
     } finally {
         Pop-Location
@@ -344,7 +382,7 @@ if ($Build) {
 }
 
 if (-not (Test-Path $BtPath)) {
-    throw "bt executable not found: $BtPath; run cargo build --release --bin bt or pass -Build."
+    throw "bt executable not found: $BtPath; run cargo build --locked --bin bt or pass -Build."
 }
 
 if ($Iterations -lt 1) {
@@ -394,7 +432,9 @@ if (-not (Test-Path $webScript)) {
 
 Write-Host "benchmark web_route"
 $webProcess = $null
-$client = New-Object System.Net.Http.HttpClient
+$handler = New-Object System.Net.Http.HttpClientHandler
+$handler.MaxConnectionsPerServer = $WebConcurrency
+$client = [System.Net.Http.HttpClient]::new($handler)
 $client.Timeout = [TimeSpan]::FromSeconds($TimeoutSeconds)
 
 try {
@@ -412,11 +452,36 @@ try {
     $webRuns = @()
     $peakWorkingSetMb = 0.0
     $maxThreads = 0
-    for ($i = 0; $i -lt $WebRequests; $i++) {
+    $pending = New-Object System.Collections.ArrayList
+    $submitted = 0
+    $webWatch = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($submitted -lt $WebRequests -or $pending.Count -gt 0) {
         if ($webProcess.HasExited) {
             throw "web benchmark process exited early, PID=$($webProcess.Id)"
         }
-        $run = Invoke-MeasuredHttpGet -Client $client -Url $webUrl -Expected '"ok":true'
+        while ($submitted -lt $WebRequests -and $pending.Count -lt $WebConcurrency) {
+            $watch = [System.Diagnostics.Stopwatch]::StartNew()
+            [void]$pending.Add([pscustomobject]@{ watch = $watch; task = $client.GetAsync($webUrl) })
+            $submitted++
+        }
+        $tasks = [System.Threading.Tasks.Task[]]@($pending | ForEach-Object { $_.task })
+        [void][System.Threading.Tasks.Task]::WhenAny($tasks).GetAwaiter().GetResult()
+        for ($index = $pending.Count - 1; $index -ge 0; $index--) {
+            $item = $pending[$index]
+            if (-not $item.task.IsCompleted) { continue }
+            $response = $item.task.GetAwaiter().GetResult()
+            try {
+                $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                $item.watch.Stop()
+                if (-not $response.IsSuccessStatusCode -or $body -notlike '*"ok":true*') {
+                    throw "Unexpected benchmark response: status $([int]$response.StatusCode), body $body"
+                }
+                $webRuns += [ordered]@{ elapsed_ms = $item.watch.Elapsed.TotalMilliseconds; peak_working_set_mb = 0; max_threads = 0 }
+            } finally {
+                $response.Dispose()
+            }
+            $pending.RemoveAt($index)
+        }
         $probe = Get-ProcessProbe -Process $webProcess
         if ($probe.working_set_mb -gt $peakWorkingSetMb) {
             $peakWorkingSetMb = $probe.working_set_mb
@@ -424,21 +489,19 @@ try {
         if ($probe.threads -gt $maxThreads) {
             $maxThreads = $probe.threads
         }
-        $webRuns += [ordered]@{
-            elapsed_ms = $run.elapsed_ms
-            peak_working_set_mb = $peakWorkingSetMb
-            max_threads = $maxThreads
-        }
     }
+    $webWatch.Stop()
+    $webRuns[-1].peak_working_set_mb = $peakWorkingSetMb
+    $webRuns[-1].max_threads = $maxThreads
 
     $webScenario = [ordered]@{
         name = "web_route"
         category = "web"
         script = "benches/web-route/main.bt"
-        operations = $WebRequests
+        operations = 1
         unit = "request"
     }
-    $results += New-ScenarioResult -Scenario $webScenario -Runs $webRuns -Iterations $WebRequests -Warmup $WebWarmupRequests
+    $results += New-ScenarioResult -Scenario $webScenario -Runs $webRuns -Iterations $WebRequests -Warmup $WebWarmupRequests -TotalElapsedMs $webWatch.Elapsed.TotalMilliseconds
 } finally {
     Stop-BtProcess -Process $webProcess
     $client.Dispose()
@@ -467,9 +530,12 @@ $payload = [ordered]@{
     git_dirty = $gitDirty
     platform = Get-PlatformInfo
     bt_path = $BtPath
+    bt_sha256 = (Get-FileHash -LiteralPath $BtPath -Algorithm SHA256).Hash.ToLowerInvariant()
     iterations = $Iterations
     warmup = $Warmup
     web_requests = $WebRequests
+    web_concurrency = $WebConcurrency
+    measurement = 'CLI samples include process startup and compilation; Web throughput uses the complete measured request window including harness overhead.'
     web_warmup_requests = $WebWarmupRequests
     timeout_seconds = $TimeoutSeconds
     scenarios = $results

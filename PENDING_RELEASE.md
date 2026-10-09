@@ -7,6 +7,8 @@ official website update page, then restore this file to this empty template.
 
 ## English
 
+- 2026-10-09: Reduce VM source-location and variable-lookup allocations while preserving diagnostics and local/closure precedence. Web requests now share a queue-inclusive execution deadline: expired queued scripts are skipped, BT loops and nested calls stop cooperatively, and sleep/HTTP/MySQL waits honor the remaining request budget. Buffered dynamic output is checked before appending; final returned response bodies are still checked before sending. Native blocking calls and external side effects cannot be forcibly interrupted or rolled back, and explicitly submitted background tasks keep their own lifecycle. Correct Web benchmark throughput accounting and add configurable concurrency and deadline/recovery acceptance checks.
+
 - 2026-09-26: Linux desktop applications now require native Wayland, with no X11/XWayland backend or fallback. Screenshot acquisition uses the Screenshot portal with bounded authorization, image decoding, and temporary-file cleanup; clipboard operations use asynchronous native GTK selection handling. Global shortcuts use GlobalShortcuts independently of window positioning and no longer initialize an X11 hotkey manager. Install a desktop launcher matching `app.id` and authorize the desktop requests. Packaged Linux apps can enable `app.single_instance` to forward later launches to the existing window through per-user ownership and bounded acknowledged IPC (32 KiB per request, 64 queued requests). Development builds disable optimization, debug symbols, and LTO while retaining incremental caching; the formal release profile is unchanged.
 
 - 2026-09-25: Native Wayland global shortcuts now use the desktop GlobalShortcuts portal with bounded asynchronous registration and session cleanup. An installed desktop launcher matching `app.id` and desktop authorization are required; concurrent registrations share a consent request. Unsupported keys, unavailable portals, rejection, and timeout produce errors instead of silently registering unusable shortcuts. The desktop controls the actual key bindings; Windows and macOS retain their native backend.
@@ -59,6 +61,8 @@ official website update page, then restore this file to this empty template.
   preserving the distinction from explicit `null`.
 
 ## 简体中文
+
+- 2026-10-09：减少 VM 源码位置和变量读取的分配，同时保留错误定位、局部变量与闭包的优先级。Web 请求现在共用包含排队时间的执行期限：过期排队脚本会被跳过，BT 循环和嵌套调用协作式停止，休眠及 HTTP/MySQL 等待遵循请求剩余时间。动态输出缓冲在追加前检查上限，最终返回的响应体仍在发送前检查。原生阻塞调用和外部副作用无法被强制中断或回滚，显式提交的后台任务保留独立生命周期。修正 Web 基准吞吐量计算，并新增可配置并发数与超时恢复验收。
 
 - 2026-09-26：Linux 桌面应用现要求原生 Wayland，不提供 X11/XWayland 后端或回退。屏幕图像通过 Screenshot portal 获取，授权等待、图像解码及临时文件清理均有边界；剪贴板使用异步原生 GTK selection。全局快捷键独立于窗口定位能力使用 GlobalShortcuts，不再初始化 X11 快捷键管理器。需要安装与 `app.id` 匹配的桌面启动器并允许桌面授权请求。Linux 打包应用可启用 `app.single_instance`，通过用户私有所有权和有界、带确认的 IPC 将重复启动转发到已有窗口（每条消息最多 32 KiB，最多排队 64 条）。开发构建关闭优化、调试符号和 LTO 并保留增量缓存；正式 release 配置不变。
 

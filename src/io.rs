@@ -3,6 +3,7 @@
 //! The shared Tokio runtime and bounded blocking pool are initialized lazily, only when a standard-library operation performs I/O.
 //! The VM instruction hot path never reads this global state, so it incurs no additional lock contention.
 
+use std::cell::RefCell;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -41,6 +42,121 @@ static ASYNC_TIMEOUTS: AtomicUsize = AtomicUsize::new(0);
 static ASYNC_REJECTED: AtomicUsize = AtomicUsize::new(0);
 /// Whether the rustls cryptography provider has been installed.
 static RUSTLS_PROVIDER_INSTALLED: OnceLock<()> = OnceLock::new();
+
+thread_local! {
+    /// The current blocking job's budget; consulted at VM creation and I/O boundaries only.
+    static EXECUTION_BUDGET: RefCell<Option<Arc<ExecutionBudget>>> = const { RefCell::new(None) };
+}
+
+/// One request's queue-inclusive deadline and cooperative cancellation signal.
+pub(crate) struct ExecutionBudget {
+    /// Deadline shared by nested VMs and asynchronous I/O.
+    deadline: Instant,
+    /// Original duration retained for consistent user-facing diagnostics.
+    timeout: Duration,
+    /// Set when the awaiting request is dropped or finishes waiting.
+    cancelled: AtomicBool,
+    /// Wakes the single foreground I/O operation when its request is cancelled.
+    wake: tokio::sync::Notify,
+}
+
+impl ExecutionBudget {
+    /// Creates a queue-inclusive budget, rejecting durations outside the monotonic clock range.
+    pub(crate) fn new(timeout: Duration) -> Result<Arc<Self>, String> {
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .ok_or_else(|| "I/O timeout exceeds the supported monotonic clock range".to_string())?;
+        Ok(Arc::new(Self {
+            deadline,
+            timeout,
+            cancelled: AtomicBool::new(false),
+            wake: tokio::sync::Notify::new(),
+        }))
+    }
+
+    /// Rejects execution after cancellation or expiry without allocating on success.
+    pub(crate) fn check(&self) -> Result<(), String> {
+        if self.cancelled.load(Ordering::Relaxed) || Instant::now() >= self.deadline {
+            Err(self.error())
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Returns the remaining request time, including time spent waiting for a worker.
+    fn remaining(&self) -> Result<Duration, String> {
+        self.check()?;
+        Ok(self.deadline.saturating_duration_since(Instant::now()))
+    }
+
+    /// Produces the same timeout diagnostic for queued work, VM execution and I/O.
+    fn error(&self) -> String {
+        format!(
+            "I/O blocking task execution exceeds {} milliseconds",
+            self.timeout.as_millis()
+        )
+    }
+
+    /// Signals cancellation; Notify retains a permit if I/O has not started waiting yet.
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Relaxed);
+        self.wake.notify_one();
+    }
+
+    /// Waits for cancellation of the single foreground operation in this blocking job.
+    async fn cancelled(&self) {
+        if !self.cancelled.load(Ordering::Relaxed) {
+            self.wake.notified().await;
+        }
+    }
+
+    /// Sleeps in bounded slices so cancellation never waits for a full user sleep interval.
+    pub(crate) fn sleep(&self, duration: Duration) -> Result<(), String> {
+        let until = Instant::now().checked_add(duration).ok_or_else(|| {
+            "sleep duration exceeds the supported monotonic clock range".to_string()
+        })?;
+        loop {
+            let remaining = self.remaining()?;
+            let sleep = until.saturating_duration_since(Instant::now());
+            if sleep.is_zero() {
+                return Ok(());
+            }
+            thread::sleep(sleep.min(remaining).min(Duration::from_millis(10)));
+        }
+    }
+
+    /// Installs a request budget on its worker, restoring any previous context on drop.
+    pub(crate) fn enter(self: &Arc<Self>) -> ExecutionBudgetGuard {
+        ExecutionBudgetGuard(EXECUTION_BUDGET.with(|slot| slot.replace(Some(self.clone()))))
+    }
+}
+
+/// Restores thread-local state even when a blocking job panics.
+pub(crate) struct ExecutionBudgetGuard(Option<Arc<ExecutionBudget>>);
+
+impl Drop for ExecutionBudgetGuard {
+    /// Prevents one request's deadline from leaking into the next worker job.
+    fn drop(&mut self) {
+        EXECUTION_BUDGET.with(|slot| {
+            slot.replace(self.0.take());
+        });
+    }
+}
+
+/// Cancels a job when its asynchronous waiter is dropped, including request cancellation.
+struct CancelExecutionOnDrop(Arc<ExecutionBudget>);
+
+impl Drop for CancelExecutionOnDrop {
+    /// Wakes I/O and marks the next VM checkpoint as cancelled.
+    fn drop(&mut self) {
+        self.0.cancel();
+    }
+}
+
+/// Captures the current budget once per VM rather than consulting TLS on each instruction.
+pub(crate) fn current_execution_budget() -> Option<Arc<ExecutionBudget>> {
+    EXECUTION_BUDGET.with(|slot| slot.borrow().clone())
+}
 
 /// I/O run boundary configuration.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -248,12 +364,12 @@ impl BlockingPool {
             self.stats.rejected.fetch_add(1, Ordering::Relaxed);
             return Err("The I/O blocking thread pool has been closed".to_string());
         };
+        // Publish the count before the worker can receive and decrement it.
+        self.stats.queued.fetch_add(1, Ordering::Relaxed);
         match sender.try_send(job) {
-            Ok(()) => {
-                self.stats.queued.fetch_add(1, Ordering::Relaxed);
-                Ok(())
-            }
+            Ok(()) => Ok(()),
             Err(TrySendError::Full(_)) => {
+                self.stats.queued.fetch_sub(1, Ordering::Relaxed);
                 self.stats.rejected.fetch_add(1, Ordering::Relaxed);
                 Err(format!(
                     "The I/O blocking task queue is full (limit: {})",
@@ -261,10 +377,51 @@ impl BlockingPool {
                 ))
             }
             Err(TrySendError::Disconnected(_)) => {
+                self.stats.queued.fetch_sub(1, Ordering::Relaxed);
                 self.stats.rejected.fetch_add(1, Ordering::Relaxed);
                 Err("The I/O blocking thread pool has stopped".to_string())
             }
         }
+    }
+
+    /// Runs request work with a queue-inclusive deadline and cancellation on waiter drop.
+    async fn run_async<T>(
+        &self,
+        timeout: Duration,
+        job: impl FnOnce() -> Result<T, String> + Send + 'static,
+    ) -> Result<T, String>
+    where
+        T: Send + 'static,
+    {
+        let budget = ExecutionBudget::new(timeout)?;
+        let cancel = CancelExecutionOnDrop(budget.clone());
+        let worker_budget = budget.clone();
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        self.submit(Box::new(move || {
+            // Expired queued work must never run user code or its side effects.
+            let result = worker_budget.check().and_then(|()| {
+                let _scope = worker_budget.enter();
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)).unwrap_or_else(
+                    |payload| Err(format!("I/O blocking task panic: {}", panic_text(payload))),
+                )
+            });
+            let _ = sender.send(result);
+        }))?;
+        let result = match tokio::time::timeout_at(budget.deadline.into(), receiver).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err("The I/O blocking task result channel has been closed".to_string()),
+            Err(_) => Err(budget.error()),
+        };
+        let result = if Instant::now() >= budget.deadline {
+            self.stats.timeouts.fetch_add(1, Ordering::Relaxed);
+            // A delayed Tokio poll may observe an already-ready result after the deadline.
+            // Do not let that race turn an expired request into a successful response.
+            Err(budget.error())
+        } else {
+            result
+        };
+        drop(cancel);
+        result
     }
 
     /// Execute the blocking closure in the thread pool and wait for the result synchronously.
@@ -365,6 +522,14 @@ pub fn run_async<F, T>(future: F, timeout: Option<Duration>) -> Result<T, String
 where
     F: Future<Output = Result<T, String>>,
 {
+    let budget = current_execution_budget();
+    let timeout = match (&budget, timeout) {
+        (Some(budget), timeout) => {
+            let remaining = budget.remaining()?;
+            Some(timeout.map_or(remaining, |value| value.min(remaining)))
+        }
+        (None, timeout) => timeout,
+    };
     let runtime = match async_runtime() {
         Ok(runtime) => runtime,
         Err(err) => {
@@ -373,9 +538,9 @@ where
         }
     };
     ASYNC_ACTIVE.fetch_add(1, Ordering::Relaxed);
-    let result = match timeout {
-        Some(timeout) => runtime.block_on(async move {
-            match tokio::time::timeout(timeout, future).await {
+    let operation = async move {
+        match timeout {
+            Some(timeout) => match tokio::time::timeout(timeout, future).await {
                 Ok(result) => result,
                 Err(_) => {
                     ASYNC_TIMEOUTS.fetch_add(1, Ordering::Relaxed);
@@ -384,10 +549,24 @@ where
                         timeout.as_millis()
                     ))
                 }
-            }
-        }),
-        None => runtime.block_on(future),
+            },
+            None => future.await,
+        }
     };
+    let result = runtime.block_on(async move {
+        if let Some(budget) = budget {
+            tokio::select! {
+                biased;
+                _ = budget.cancelled() => Err(budget.error()),
+                result = operation => {
+                    budget.check()?;
+                    result
+                }
+            }
+        } else {
+            operation.await
+        }
+    });
     ASYNC_ACTIVE.fetch_sub(1, Ordering::Relaxed);
     match result {
         Ok(Ok(value)) => {
@@ -460,26 +639,8 @@ where
         Ok(pool) => pool,
         Err(err) => return Err(err),
     };
-    let timeout = timeout.unwrap_or_else(default_timeout);
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    pool.submit(Box::new(move || {
-        let result =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)).unwrap_or_else(|payload| {
-                Err(format!("I/O blocking task panic: {}", panic_text(payload)))
-            });
-        let _ = sender.send(result);
-    }))?;
-    match tokio::time::timeout(timeout, receiver).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("The I/O blocking task result channel has been closed".to_string()),
-        Err(_) => {
-            pool.stats.timeouts.fetch_add(1, Ordering::Relaxed);
-            Err(format!(
-                "I/O blocking task execution exceeds {} milliseconds",
-                timeout.as_millis()
-            ))
-        }
-    }
+    pool.run_async(timeout.unwrap_or_else(default_timeout), job)
+        .await
 }
 
 /// Returns the current default I/O timeout.
@@ -749,5 +910,140 @@ mod tests {
             .unwrap();
 
         assert_eq!(value, 11);
+    }
+
+    /// Work whose queue deadline expired must never execute user side effects.
+    #[test]
+    fn expired_request_is_skipped_before_execution() {
+        let pool = BlockingPool::start(test_config(4)).unwrap();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        pool.submit(Box::new(move || {
+            entered_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        }))
+        .unwrap();
+        entered_rx.recv().unwrap();
+        let ran = Arc::new(AtomicBool::new(false));
+        let job_ran = ran.clone();
+        let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+        let result = runtime.block_on(pool.run_async(Duration::from_millis(10), move || {
+            job_ran.store(true, Ordering::Relaxed);
+            Ok(())
+        }));
+        assert!(result.unwrap_err().contains("exceeds 10 milliseconds"));
+        release_tx.send(()).unwrap();
+        assert_eq!(
+            runtime
+                .block_on(pool.run_async(Duration::from_secs(2), || {
+                    assert!(current_execution_budget().is_some());
+                    Ok(7)
+                }))
+                .unwrap(),
+            7
+        );
+        assert!(!ran.load(Ordering::Relaxed));
+        assert!(pool.shutdown(Duration::from_secs(2)));
+        assert_eq!(pool.snapshot().queued, 0);
+    }
+
+    /// Dropping a waiter cancels an active cooperative job and releases the only worker.
+    #[test]
+    fn dropped_request_releases_worker_and_restores_context() {
+        let pool = BlockingPool::start(test_config(4)).unwrap();
+        let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+            {
+                let future = pool.run_async(Duration::from_secs(5), move || {
+                    let budget = current_execution_budget().unwrap();
+                    let _ = started_tx.send(());
+                    budget.sleep(Duration::from_secs(5))
+                });
+                tokio::pin!(future);
+                tokio::select! {
+                    result = &mut future => panic!("job ended before cancellation: {result:?}"),
+                    _ = started_rx => {},
+                }
+            }
+            let result = pool
+                .run_async(Duration::from_secs(2), || Ok(11))
+                .await
+                .unwrap();
+            assert_eq!(result, 11);
+        });
+        // A plain job on the same worker must not inherit the cancelled request.
+        assert!(pool
+            .run(Duration::from_secs(2), || Ok(
+                current_execution_budget().is_none()
+            ))
+            .unwrap());
+        assert!(pool.shutdown(Duration::from_secs(2)));
+    }
+
+    /// A request deadline limits I/O even when the operation has no separate timeout.
+    #[test]
+    fn request_deadline_bounds_pending_async_io() {
+        let budget = ExecutionBudget::new(Duration::from_millis(20)).unwrap();
+        let _scope = budget.enter();
+        let result = run_async(std::future::pending::<Result<(), String>>(), None);
+        assert!(result.is_err());
+    }
+
+    /// Cancellation wakes pending asynchronous I/O without waiting for its long deadline.
+    #[test]
+    fn request_cancellation_wakes_pending_async_io() {
+        let budget = ExecutionBudget::new(Duration::from_secs(5)).unwrap();
+        let cancel = budget.clone();
+        let (started_tx, started_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let _scope = budget.enter();
+            run_async(
+                async move {
+                    started_tx.send(()).unwrap();
+                    std::future::pending::<Result<(), String>>().await
+                },
+                None,
+            )
+        });
+        started_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let start = Instant::now();
+        cancel.cancel();
+        assert!(worker.join().unwrap().is_err());
+        assert!(start.elapsed() < Duration::from_secs(2));
+    }
+
+    /// Extreme configuration values must return errors instead of panicking a server worker.
+    #[test]
+    fn request_budget_rejects_unrepresentable_deadline() {
+        assert!(ExecutionBudget::new(Duration::MAX).is_err());
+    }
+
+    /// A result ready after an executor stall must not bypass the absolute request deadline.
+    #[test]
+    fn delayed_waiter_rejects_result_after_deadline() {
+        let pool = BlockingPool::start(test_config(4)).unwrap();
+        let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+            let (release_tx, release_rx) = mpsc::channel();
+            let future = pool.run_async(Duration::from_millis(50), move || {
+                let _ = started_tx.send(());
+                release_rx.recv().unwrap();
+                Ok(7)
+            });
+            tokio::pin!(future);
+            tokio::select! {
+                result = &mut future => panic!("job ended before release: {result:?}"),
+                _ = started_rx => {},
+            }
+            release_tx.send(()).unwrap();
+            thread::sleep(Duration::from_millis(80));
+            assert!(future
+                .await
+                .unwrap_err()
+                .contains("exceeds 50 milliseconds"));
+        });
+        assert!(pool.shutdown(Duration::from_secs(2)));
     }
 }

@@ -504,7 +504,7 @@ async fn eval_request(
     Ok(())
 }
 
-/// Executes one Web request script in the BT blocking pool.
+/// Executes a request under its inherited deadline and checks output limits while buffering.
 fn eval_request_blocking(
     state: SiteState,
     snapshot: WebRequestSnapshot,
@@ -515,6 +515,7 @@ fn eval_request_blocking(
     #[cfg(feature = "extensions")]
     vm.set_extension_manager(state.extension_manager.clone())?;
     vm.set_web_response(response_state.clone());
+    vm.set_output_limit(web_resource_limits()?.response_body_bytes);
     inject_context(&mut vm, context);
 
     let chunk = compile_cached_file(&state.entry_path, false)?;

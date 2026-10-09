@@ -7,13 +7,14 @@ use crate::lexer::TokenKind;
 use crate::value::Value;
 use std::collections::HashMap;
 use std::mem;
+use std::sync::Arc;
 
 /// The current in-process bytecode format version.
 ///
 /// This value invalidates in-process compilation caches. Increment it whenever the
 /// layout or semantics of `Instruction`, `Chunk`, the constant pool, or function
 /// blocks change, so long-running processes cannot reuse stale bytecode.
-pub const BYTECODE_FORMAT_VERSION: u32 = 1;
+pub const BYTECODE_FORMAT_VERSION: u32 = 2;
 
 /// Constant pool index.
 pub type ConstId = u32;
@@ -28,8 +29,8 @@ pub type Register = u32;
 /// line, and column when reporting an error.
 #[derive(Debug, Clone)]
 pub struct SourceSpan {
-    /// Source code file name.
-    pub file: String,
+    /// Shared source name; cloning a runtime location never copies the path text.
+    pub file: Arc<str>,
     /// Starting line number, starting from 1.
     pub line: usize,
     /// Starting column number, starting from 1.
@@ -116,10 +117,15 @@ impl Chunk {
         self.spans.push(None);
     }
 
-    /// Write instructions with source code location.
+    /// Writes an instruction and shares adjacent source names without changing diagnostics.
     ///
     /// The compiler should give priority to calling this method so that runtime errors can accurately fall back to the user source code.
-    pub fn emit_at(&mut self, instruction: Instruction, span: SourceSpan) {
+    pub fn emit_at(&mut self, instruction: Instruction, mut span: SourceSpan) {
+        if let Some(previous) = self.spans.last().and_then(Option::as_ref) {
+            if previous.file == span.file {
+                span.file = previous.file.clone();
+            }
+        }
         self.code.push(instruction);
         self.spans.push(Some(span));
     }

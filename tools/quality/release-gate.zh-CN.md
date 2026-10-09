@@ -90,3 +90,16 @@ powershell -ExecutionPolicy Bypass -File tools/quality/run-longrun.ps1 -Build -D
 `target/quality/` 下的 JSON 只用作本地证据或 CI artifact，不得提交。
 
 [English](release-gate.md)
+
+## 本地性能迭代
+
+普通性能开发使用增量开发构建，只有明确要求发布新版本时才使用 release 构建。对照必须使用同一构建配置、机器、负载和并发数，并保留两个可执行文件的哈希及 JSON 报告。开发构建耗时不能推算生产吞吐量。基准脚本默认使用 `target/debug/bt`，`-Build` 执行 `cargo build --locked --bin bt`；正式发布门禁仍显式传入 release 可执行文件。
+
+```powershell
+tools/quality/run-benchmarks.ps1 -SelfTest
+tools/quality/run-benchmarks.ps1 -Build -Iterations 7 -WebConcurrency 1 -Output target/quality/performance-serial.json
+tools/quality/run-benchmarks.ps1 -Iterations 7 -WebConcurrency 16 -WebRequests 1000 -Output target/quality/performance-concurrent.json
+python tools/quality/verify-web-deadlines.py --bt target/debug/bt.exe
+```
+
+Unix 的验收可执行文件路径为 `target/debug/bt`。`WebConcurrency` 默认为 `1`，范围为 `1..256`；`WebRequests` 是全部并发请求的总数。Web 延迟样本记录单次请求，吞吐量使用完成请求数除以包含客户端测试开销的整个测量窗口耗时；CLI 耗时包含启动、编译和执行。`total_operations`、`total_elapsed_ms`、`web_concurrency` 和 `bt_sha256` 用于复核结果。任何 HTTP 错误都会让基准失败，不计入成功吞吐量。旧版 Web 吞吐计算会把结果乘以请求数，因此不能直接对比旧吞吐数值。
