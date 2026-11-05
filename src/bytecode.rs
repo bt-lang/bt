@@ -14,7 +14,7 @@ use std::sync::Arc;
 /// This value invalidates in-process compilation caches. Increment it whenever the
 /// layout or semantics of `Instruction`, `Chunk`, the constant pool, or function
 /// blocks change, so long-running processes cannot reuse stale bytecode.
-pub const BYTECODE_FORMAT_VERSION: u32 = 2;
+pub const BYTECODE_FORMAT_VERSION: u32 = 3;
 
 /// Constant pool index.
 pub type ConstId = u32;
@@ -67,7 +67,7 @@ pub struct Chunk {
     /// here. Unmarked symbols fall through to the enclosing closure or global
     /// environment, preserving JavaScript-style scoping.
     pub local_symbols: Vec<bool>,
-    /// The number of registers allocated at compile time.
+    /// The peak number of temporary slots needed at any point in this block.
     pub register_count: Register,
 }
 
@@ -284,7 +284,7 @@ pub enum Instruction {
         /// Constant pool number.
         constant: ConstId,
     },
-    /// Expands a template string.
+    /// Expands a template string in its source slot.
     ///
     /// The compiler keeps the original backtick text because interpolation reads
     /// variables from the current runtime scope. This instruction evaluates each
@@ -295,15 +295,14 @@ pub enum Instruction {
         /// The register where the template original text is located.
         src: Register,
     },
-    /// Copies a register value.
-    ///
-    /// Control flows such as conditional expressions will generate different registers in different branches; by explicitly copying to the unified target register,
-    /// subsequent instructions can treat the entire control flow as a normal expression and continue to pass the return value.
+    /// Moves an assignment result and its origin below its consumed target operands.
     Move {
         /// Destination register.
         dst: Register,
         /// Source register.
         src: Register,
+        /// Exclusive end of the consumed slots above the destination.
+        end: Register,
     },
     /// Loads a variable from the global environment.
     LoadGlobal {
@@ -339,16 +338,21 @@ pub enum Instruction {
         /// Matches `symbols` and marks which bindings are constants.
         constants: Vec<bool>,
     },
-    /// Binary operations.
+    /// Evaluates a binary operation, replacing the left operand and clearing the right.
     Binary {
         /// Operator.
         op: TokenKind,
-        /// Destination register.
-        dst: Register,
-        /// Left operand register.
+        /// Left operand and result register.
         lhs: Register,
-        /// Right operand register.
+        /// Consumed right operand register.
         rhs: Register,
+    },
+    /// Replaces the pattern with its loose equality result while retaining the match target.
+    MatchEqual {
+        /// Target shared by successive match arms.
+        target: Register,
+        /// Pattern operand and result register.
+        pattern: Register,
     },
     /// Performs increment or decrement on the value.
     ///
@@ -381,21 +385,21 @@ pub enum Instruction {
         /// Source register.
         src: Register,
     },
-    /// Creates an array with elements from a set of registers.
+    /// Creates an array and consumes the element registers.
     MakeArray {
         /// Destination register.
         dst: Register,
         /// Element register list.
         items: Vec<Register>,
     },
-    /// Creates an object from symbol-pool keys and value registers.
+    /// Creates an object from symbol-pool keys and consumes the value registers.
     MakeObject {
         /// Destination register.
         dst: Register,
         /// List of object properties.
         entries: Vec<(SymbolId, Register)>,
     },
-    /// Read attributes or subscripts.
+    /// Reads an attribute or subscript. If `dst` is `object`, both operands are consumed.
     GetProperty {
         /// Destination register.
         dst: Register,
@@ -420,7 +424,7 @@ pub enum Instruction {
         /// Function table number.
         function: u32,
     },
-    /// Creates a class value.
+    /// Creates a class and consumes the member registers.
     MakeClass {
         /// Destination register.
         dst: Register,
@@ -429,7 +433,7 @@ pub enum Instruction {
         /// Member name, member value register and public flag.
         members: Vec<(SymbolId, Register, bool)>,
     },
-    /// Converts iterable values to VM-internal iterators.
+    /// Replaces an iterable value with a VM-internal iterator.
     ///
     /// Arrays, objects, and strings maintain existing snapshot semantics; integers are converted to lazy iterators, and elements are not preallocated.
     IterInit {
@@ -438,7 +442,7 @@ pub enum Instruction {
         /// The register where the value to be traversed is located.
         iterable: Register,
     },
-    /// Creates a strict integer iterator by count.
+    /// Creates a strict integer iterator and consumes the count and step operands.
     CountInit {
         /// Destination register.
         dst: Register,
@@ -447,7 +451,7 @@ pub enum Instruction {
         /// Optional positive integer step size register; when empty, the default step size `1` is used.
         step: Option<Register>,
     },
-    /// Creates a closed range or endless range iterator.
+    /// Creates a closed range or endless range iterator, consuming its operands.
     RangeInit {
         /// Destination register.
         dst: Register,
@@ -478,14 +482,14 @@ pub enum Instruction {
         /// The instruction index to jump to at the end of the iteration.
         jump_to_end: u32,
     },
-    /// Imports object fields into the current scope.
+    /// Imports object fields into the current scope and consumes the source object.
     UseFields {
         /// Source object register.
         object: Register,
         /// Fields to import; an empty list imports every field.
         fields: Vec<SymbolId>,
     },
-    /// Calls a function or method.
+    /// Calls a function or method, consuming the callee and arguments.
     Call {
         /// Destination register.
         dst: Register,
@@ -499,22 +503,29 @@ pub enum Instruction {
         /// Target instruction index.
         target: u32,
     },
-    /// Jumps when the condition is false.
+    /// Consumes the condition and jumps if it was false.
     JumpIfFalse {
         /// Condition register.
         condition: Register,
         /// Target instruction index.
         target: u32,
     },
-    /// Jump when the condition is true.
-    JumpIfTrue {
+    /// Jumps on a false value, keeping it only when taking the jump.
+    KeepIfFalse {
+        /// Condition and potential result register.
+        condition: Register,
+        /// Target instruction index.
+        target: u32,
+    },
+    /// Jumps on a true value, keeping it only when taking the jump.
+    KeepIfTrue {
         /// Condition register.
         condition: Register,
         /// Target instruction index.
         target: u32,
     },
-    /// Jump when the condition is `null` or `empty`.
-    JumpIfNullish {
+    /// Jumps on a non-nullish value, keeping it only when taking the jump.
+    KeepIfNotNullish {
         /// Condition register.
         condition: Register,
         /// Target instruction index.
@@ -540,6 +551,13 @@ pub enum Instruction {
     Pop {
         /// Source register.
         src: Register,
+    },
+    /// Drops abandoned temporary values and clears their diagnostic origins.
+    ClearRegisters {
+        /// First slot to clear, inclusive.
+        start: Register,
+        /// Exclusive end of the abandoned slots.
+        end: Register,
     },
     /// Returns from the current function.
     Return {

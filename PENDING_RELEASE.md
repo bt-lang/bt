@@ -7,6 +7,8 @@ official website update page, then restore this file to this empty template.
 
 ## English
 
+- 2026-11-05: Reuse temporary register slots across expressions and release values after their last use to reduce memory held by long-running frames. Store local variables and parameters directly in function frames until a closure captures them. Loop jumps that stay inside a `try` block now preserve its `catch` handler. Keep the handle returned by `process(...).child()` while its managed child needs to run, since discarding the last handle can now terminate the child before the frame exits.
+
 - 2026-10-09: Reuse cleared VM register buffers within a per-VM limit of 1 MiB and 32 idle frames, and remove an extra argument-value copy when calling BT functions. Reclaim stale class and instance bytecode-owner records during object creation and after outermost execution, reducing retained memory in resident applications while preserving live method owners, closures, return values, and error locations. No syntax or API migration is required.
 
 - 2026-10-09: Reduce VM source-location and variable-lookup allocations while preserving diagnostics and local/closure precedence. Web requests now share a queue-inclusive execution deadline: expired queued scripts are skipped, BT loops and nested calls stop cooperatively, and sleep/HTTP/MySQL waits honor the remaining request budget. Buffered dynamic output is checked before appending; final returned response bodies are still checked before sending. Native blocking calls and external side effects cannot be forcibly interrupted or rolled back, and explicitly submitted background tasks keep their own lifecycle. Correct Web benchmark throughput accounting and add configurable concurrency and deadline/recovery acceptance checks.
@@ -63,6 +65,8 @@ official website update page, then restore this file to this empty template.
   preserving the distinction from explicit `null`.
 
 ## 简体中文
+
+- 2026-11-05：在表达式之间复用临时寄存器，并在值最后一次使用后释放它们，减少长时间运行的执行帧占用的内存。局部变量和参数直接存放在函数帧中，直到被闭包捕获。循环跳转若仍处于同一 `try` 块中，会保留其 `catch` 处理器。托管子进程仍需运行时，请保留 `process(...).child()` 返回的句柄，因为丢弃最后一个句柄现在可能在执行帧退出前终止子进程。
 
 - 2026-10-09：复用已清空的 VM 寄存器缓冲，每个 VM 最多保留 1 MiB、32 个空闲帧，并消除调用 BT 函数时一次多余的参数值复制。在对象创建期间和最外层执行结束后清理失效的类与实例字节码归属记录，降低常驻应用的内存滞留，同时保留存活对象的方法归属、闭包、返回值和错误定位。无需迁移语法或 API。
 

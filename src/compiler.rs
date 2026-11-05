@@ -42,7 +42,7 @@ impl std::error::Error for CompileError {}
 pub struct Compiler {
     /// The bytecode block currently being built.
     chunk: Chunk,
-    /// Next available virtual register.
+    /// Depth of the live temporary stack. The chunk records its peak separately.
     next_register: Register,
     /// The directory where the current compiled file is located, used to resolve relative paths such as `include('demo.bt')`.
     base_dir: PathBuf,
@@ -105,6 +105,10 @@ struct LoopContext {
     label: String,
     /// `continue` The index of the instruction that should be jumped back to.
     continue_target: u32,
+    /// Slots below this depth survive a jump to this loop, including its iterator.
+    register_depth: Register,
+    /// Number of handlers that remain active when jumping within or out of this loop.
+    try_depth: usize,
     /// `break` jump instruction location to be backfilled.
     breaks: Vec<usize>,
     /// `continue` jump instruction location to be backfilled.
@@ -169,7 +173,6 @@ impl Compiler {
             self.compile_statement(statement)?;
         }
         self.chunk.emit(Instruction::Halt);
-        self.chunk.register_count = self.next_register;
         Ok(self.chunk)
     }
 
@@ -186,7 +189,6 @@ impl Compiler {
         let src = self.compile_block_value(statements)?;
         self.chunk.emit(Instruction::Return { src });
         self.chunk.emit(Instruction::Halt);
-        self.chunk.register_count = self.next_register;
         Ok(self.chunk)
     }
 
@@ -652,13 +654,24 @@ impl Compiler {
         })
     }
 
-    /// Compiles a single statement.
+    /// Compiles a statement for its side effects and releases its temporary values.
     fn compile_statement(&mut self, statement: &Statement) -> Result<(), CompileError> {
+        let first = self.next_register;
+        self.compile_statement_inner(statement)?;
+        if self.next_register == first + 1 {
+            self.emit_statement(Instruction::Pop { src: first }, statement);
+            self.next_register = first;
+        }
+        debug_assert_eq!(self.next_register, first);
+        Ok(())
+    }
+
+    /// Compiles one statement, leaving any unused natural result for the caller to release.
+    fn compile_statement_inner(&mut self, statement: &Statement) -> Result<(), CompileError> {
         match statement {
             Statement::Empty => Ok(()),
             Statement::Expr(expr) => {
-                let src = self.compile_expr(expr)?;
-                self.emit_expr(Instruction::Pop { src }, expr);
+                self.compile_expr(expr)?;
                 Ok(())
             }
             Statement::Print(expr) => {
@@ -733,7 +746,7 @@ impl Compiler {
                 self.compile_if(condition, true_body, else_body.as_deref())
             }
             Statement::Try(span, try_body, error, catch_body) => {
-                self.compile_try(span, try_body, error, catch_body)
+                self.compile_try(span, try_body, error, catch_body, Self::compile_block)
             }
             Statement::For(label, key, value, iter, step, body) => {
                 self.compile_for(label, key, value, iter, step.as_ref(), body)
@@ -760,7 +773,6 @@ impl Compiler {
                 let jump_to_end = self.emit_jump_if_false(condition_register, condition);
                 self.push_loop(label, loop_start);
                 self.compile_block(body)?;
-                self.finish_loop(loop_start, None);
                 self.emit_statement(Instruction::Jump { target: loop_start }, statement);
                 self.patch_jump(jump_to_end);
                 let loop_end = self.chunk.code.len() as u32;
@@ -771,7 +783,6 @@ impl Compiler {
                 let loop_start = self.chunk.code.len() as u32;
                 self.push_loop(label, loop_start);
                 self.compile_block(body)?;
-                self.finish_loop(loop_start, None);
                 self.emit_statement(Instruction::Jump { target: loop_start }, statement);
                 let loop_end = self.chunk.code.len() as u32;
                 self.patch_finished_loop(loop_end);
@@ -780,11 +791,13 @@ impl Compiler {
             Statement::Return(expr) => {
                 let src = self.compile_expr(expr)?;
                 self.emit_expr(Instruction::Return { src }, expr);
+                self.next_register = src;
                 Ok(())
             }
             Statement::Throw(expr) => {
                 let src = self.compile_expr(expr)?;
                 self.emit_expr(Instruction::Throw { src }, expr);
+                self.next_register = src;
                 Ok(())
             }
             Statement::Break(label) => self.compile_loop_jump(label, true),
@@ -793,7 +806,7 @@ impl Compiler {
         }
     }
 
-    /// Compiles the expression and returns the register holding the result.
+    /// Compiles an expression into the first free slot, releasing any higher operands.
     fn compile_expr(&mut self, expr: &PosExpr) -> Result<Register, CompileError> {
         match &expr.expr {
             Expr::Int(value) => self.emit_constant(Value::Int(*value)),
@@ -801,9 +814,8 @@ impl Compiler {
             Expr::Str(value) => self.emit_constant(Value::Str(value.clone())),
             Expr::Strs(value) => {
                 let src = self.emit_constant(Value::Str(value.clone()))?;
-                let dst = self.alloc_register();
-                self.emit_expr(Instruction::ExpandTemplate { dst, src }, expr);
-                Ok(dst)
+                self.emit_expr(Instruction::ExpandTemplate { dst: src, src }, expr);
+                Ok(src)
             }
             Expr::Bool(value) => self.emit_constant(Value::Bool(*value)),
             Expr::Null => self.emit_constant(Value::Null),
@@ -824,36 +836,34 @@ impl Compiler {
                 }
                 let lhs = self.compile_expr(left)?;
                 let rhs = self.compile_expr(right)?;
-                let dst = self.alloc_register();
                 self.emit_expr(
                     Instruction::Binary {
                         op: op.kind.clone(),
-                        dst,
                         lhs,
                         rhs,
                     },
                     expr,
                 );
-                Ok(dst)
+                self.next_register = rhs;
+                Ok(lhs)
             }
             Expr::Not(inner) => {
                 let src = self.compile_expr(inner)?;
-                let dst = self.alloc_register();
-                self.emit_expr(Instruction::Not { dst, src }, expr);
-                Ok(dst)
+                self.emit_expr(Instruction::Not { dst: src, src }, expr);
+                Ok(src)
             }
             Expr::BitNot(inner) => {
                 let src = self.compile_expr(inner)?;
-                let dst = self.alloc_register();
-                self.emit_expr(Instruction::BitNot { dst, src }, expr);
-                Ok(dst)
+                self.emit_expr(Instruction::BitNot { dst: src, src }, expr);
+                Ok(src)
             }
             Expr::Array(items) => {
+                let first = self.next_register;
                 let mut registers = Vec::with_capacity(items.len());
                 for item in items {
                     registers.push(self.compile_expr(item)?);
                 }
-                let dst = self.alloc_register();
+                let dst = self.reuse_register(first);
                 self.emit_expr(
                     Instruction::MakeArray {
                         dst,
@@ -864,13 +874,14 @@ impl Compiler {
                 Ok(dst)
             }
             Expr::Object(entries) => {
+                let first = self.next_register;
                 let mut compiled = Vec::with_capacity(entries.len());
                 for (key, value) in entries {
                     let symbol = self.chunk.symbols.intern(key);
                     let value = self.compile_expr(value)?;
                     compiled.push((symbol, value));
                 }
-                let dst = self.alloc_register();
+                let dst = self.reuse_register(first);
                 self.emit_expr(
                     Instruction::MakeObject {
                         dst,
@@ -887,7 +898,7 @@ impl Compiler {
                 for arg in args {
                     compiled_args.push(self.compile_expr(arg)?);
                 }
-                let dst = self.alloc_register();
+                let dst = self.reuse_register(callee);
                 self.emit_expr(
                     Instruction::Call {
                         dst,
@@ -902,24 +913,24 @@ impl Compiler {
             Expr::New(name, class_expr, args) => {
                 let callee = self.compile_expr(class_expr)?;
                 let method_name = self.emit_constant(Value::Str(name.clone()))?;
-                let method = self.alloc_register();
                 self.emit_expr(
                     Instruction::GetProperty {
-                        dst: method,
+                        dst: callee,
                         object: callee,
                         key: method_name,
                     },
                     expr,
                 );
+                self.next_register = method_name;
                 let mut compiled_args = Vec::with_capacity(args.len());
                 for arg in args {
                     compiled_args.push(self.compile_expr(arg)?);
                 }
-                let dst = self.alloc_register();
+                let dst = self.reuse_register(callee);
                 self.emit_expr(
                     Instruction::Call {
                         dst,
-                        callee: method,
+                        callee,
                         args: compiled_args,
                     },
                     expr,
@@ -929,11 +940,15 @@ impl Compiler {
             Expr::Statement(statements) => self.compile_block_value(statements),
             Expr::Match(target, arms) => self.compile_match_value(target, arms, expr),
             Expr::Vec(items) => {
-                let mut last = self.emit_constant(Value::Empty)?;
-                for item in items {
-                    last = self.compile_expr(item)?;
+                let Some((last, prefix)) = items.split_last() else {
+                    return self.emit_constant(Value::Empty);
+                };
+                for item in prefix {
+                    let src = self.compile_expr(item)?;
+                    self.emit_expr(Instruction::Pop { src }, item);
+                    self.next_register = src;
                 }
-                Ok(last)
+                self.compile_expr(last)
             }
             Expr::Destructure(_) => Err(CompileError {
                 file: expr.file.clone(),
@@ -1032,14 +1047,21 @@ impl Compiler {
         Some(Self::span_from_expr(expr))
     }
 
-    /// Allocates a new virtual register.
+    /// Pushes one temporary slot and records the frame's high-water mark.
     fn alloc_register(&mut self) -> Register {
         let register = self.next_register;
         self.next_register = self
             .next_register
             .checked_add(1)
-            .expect("virtual register count exceeds the u16 limit");
+            .expect("temporary register count exceeds the u32 limit");
+        self.chunk.register_count = self.chunk.register_count.max(self.next_register);
         register
+    }
+
+    /// Places an instruction result in the lowest slot of its consumed operands.
+    fn reuse_register(&mut self, first: Register) -> Register {
+        self.next_register = first;
+        self.alloc_register()
     }
 
     /// Compile continuous statement blocks.
@@ -1146,7 +1168,7 @@ impl Compiler {
                 self.compile_if_value(condition, true_body, else_body.as_deref())
             }
             Statement::Try(span, try_body, error, catch_body) => {
-                self.compile_try_value(span, try_body, error, catch_body)
+                self.compile_try(span, try_body, error, catch_body, Self::compile_block_value)
             }
             Statement::Return(expr) => {
                 let src = self.compile_expr(expr)?;
@@ -1156,6 +1178,7 @@ impl Compiler {
             Statement::Throw(expr) => {
                 let src = self.compile_expr(expr)?;
                 self.emit_expr(Instruction::Throw { src }, expr);
+                self.next_register = src;
                 self.emit_constant(Value::Empty)
             }
             Statement::For(_, _, _, _, _, _)
@@ -1172,7 +1195,7 @@ impl Compiler {
         }
     }
 
-    /// Compiles `use obj` and `use obj{a,b}` field imports.
+    /// Compiles `use obj` and `use obj{a,b}` field imports, then releases the source object.
     ///
     /// `use` performs scope destructuring rather than module loading. Named fields
     /// become variables in the current scope; without a field list, runtime object
@@ -1202,6 +1225,7 @@ impl Compiler {
             .transpose()?
             .unwrap_or_default();
         self.emit_expr(Instruction::UseFields { object, fields }, object_expr);
+        self.next_register = object;
         Ok(())
     }
 
@@ -1225,52 +1249,43 @@ impl Compiler {
     }
 
     /// Compiles a conditional expression and returns the value of the branch taken.
-    /// Each branch produces a register value that is copied into a shared target, so
-    /// `if` can participate in assignments, arguments, and implicit returns.
+    /// Both branches start at the same stack depth and produce a value in that slot.
     fn compile_if_value(
         &mut self,
         condition: &PosExpr,
         true_body: &[Statement],
         else_body: Option<&[Statement]>,
     ) -> Result<Register, CompileError> {
-        let dst = self.alloc_register();
         let condition_register = self.compile_expr(condition)?;
         let jump_to_else = self.emit_jump_if_false(condition_register, condition);
         let true_value = self.compile_block_value(true_body)?;
-        self.emit_expr(
-            Instruction::Move {
-                dst,
-                src: true_value,
-            },
-            condition,
-        );
         let jump_to_end = self.emit_jump();
         self.patch_jump(jump_to_else);
+        self.next_register = true_value;
         let false_value = if let Some(else_body) = else_body {
             self.compile_block_value(else_body)?
         } else {
             self.emit_constant(Value::Empty)?
         };
-        self.emit_expr(
-            Instruction::Move {
-                dst,
-                src: false_value,
-            },
-            condition,
-        );
+        debug_assert_eq!(true_value, false_value);
         self.patch_jump(jump_to_end);
-        Ok(dst)
+        Ok(true_value)
     }
 
-    /// Compile try/catch statements.
-    fn compile_try(
+    /// Compiles both try paths from the same slot depth, clearing only abandoned protected slots.
+    ///
+    /// Statement bodies leave the stack depth unchanged. Expression bodies produce
+    /// their result in the entry slot on either path.
+    fn compile_try<T>(
         &mut self,
         span: &PosExpr,
         try_body: &[Statement],
         error: &str,
         catch_body: &[Statement],
-    ) -> Result<(), CompileError> {
+        compile_body: fn(&mut Self, &[Statement]) -> Result<T, CompileError>,
+    ) -> Result<T, CompileError> {
         let error_symbol = self.compile_catch_symbol(error, span)?;
+        let first = self.next_register;
         let enter_try = self.chunk.code.len();
         self.emit_expr(
             Instruction::EnterTry {
@@ -1279,60 +1294,33 @@ impl Compiler {
             },
             span,
         );
+        // Record the protected body's own peak, so a caught throw never sweeps
+        // unused slots from wider, unrelated expressions in the same chunk.
+        let previous_peak = std::mem::replace(&mut self.chunk.register_count, first);
         self.try_depth += 1;
-        let result = self.compile_block(try_body);
-        self.try_depth = self.try_depth.saturating_sub(1);
-        result?;
+        let result = compile_body(self, try_body);
+        self.try_depth -= 1;
+        let try_peak = self.chunk.register_count;
+        self.chunk.register_count = previous_peak.max(try_peak);
+        let result = result?;
+        let end_depth = self.next_register;
         self.emit_expr(Instruction::LeaveTry, span);
         let jump_to_end = self.emit_jump();
         self.patch_try_catch(enter_try);
-        self.compile_block(catch_body)?;
+        if first < try_peak {
+            self.emit_expr(
+                Instruction::ClearRegisters {
+                    start: first,
+                    end: try_peak,
+                },
+                span,
+            );
+        }
+        self.next_register = first;
+        compile_body(self, catch_body)?;
+        debug_assert_eq!(self.next_register, end_depth);
         self.patch_jump(jump_to_end);
-        Ok(())
-    }
-
-    /// Compiles try/catch expressions that return values.
-    fn compile_try_value(
-        &mut self,
-        span: &PosExpr,
-        try_body: &[Statement],
-        error: &str,
-        catch_body: &[Statement],
-    ) -> Result<Register, CompileError> {
-        let dst = self.alloc_register();
-        let error_symbol = self.compile_catch_symbol(error, span)?;
-        let enter_try = self.chunk.code.len();
-        self.emit_expr(
-            Instruction::EnterTry {
-                catch_target: 0,
-                error_symbol,
-            },
-            span,
-        );
-        self.try_depth += 1;
-        let try_value = self.compile_block_value(try_body);
-        self.try_depth = self.try_depth.saturating_sub(1);
-        let try_value = try_value?;
-        self.emit_expr(
-            Instruction::Move {
-                dst,
-                src: try_value,
-            },
-            span,
-        );
-        self.emit_expr(Instruction::LeaveTry, span);
-        let jump_to_end = self.emit_jump();
-        self.patch_try_catch(enter_try);
-        let catch_value = self.compile_block_value(catch_body)?;
-        self.emit_expr(
-            Instruction::Move {
-                dst,
-                src: catch_value,
-            },
-            span,
-        );
-        self.patch_jump(jump_to_end);
-        Ok(dst)
+        Ok(result)
     }
 
     /// Verifies the catch variable name and returns the symbol number.
@@ -1347,7 +1335,7 @@ impl Compiler {
         Ok(symbol)
     }
 
-    /// Compiles a match expression.
+    /// Compiles a match expression. A successful arm reuses the now-dead target slot.
     fn compile_match_value(
         &mut self,
         target: &PosExpr,
@@ -1355,44 +1343,44 @@ impl Compiler {
         span: &PosExpr,
     ) -> Result<Register, CompileError> {
         let target = self.compile_expr(target)?;
-        let dst = self.alloc_register();
         let mut jumps_to_end = Vec::new();
         let mut has_default = false;
 
         for arm in arms {
-            let Some(pattern) = &arm.pattern else {
+            let jump_to_next = if let Some(pattern) = &arm.pattern {
+                let pattern_value = self.compile_expr(pattern)?;
+                self.emit_expr(
+                    Instruction::MatchEqual {
+                        target,
+                        pattern: pattern_value,
+                    },
+                    pattern,
+                );
+                Some(self.emit_jump_if_false(pattern_value, pattern))
+            } else {
                 has_default = true;
-                let value = self.compile_expr(&arm.value)?;
-                self.emit_expr(Instruction::Move { dst, src: value }, &arm.value);
-                jumps_to_end.push(self.emit_jump());
-                continue;
+                None
             };
-            let pattern_value = self.compile_expr(pattern)?;
-            let matched = self.alloc_register();
-            self.emit_expr(
-                Instruction::Binary {
-                    op: TokenKind::Equal,
-                    dst: matched,
-                    lhs: target,
-                    rhs: pattern_value,
-                },
-                pattern,
-            );
-            let jump_to_next = self.emit_jump_if_false(matched, pattern);
+            self.emit_expr(Instruction::Pop { src: target }, &arm.value);
+            self.next_register = target;
             let value = self.compile_expr(&arm.value)?;
-            self.emit_expr(Instruction::Move { dst, src: value }, &arm.value);
+            debug_assert_eq!(value, target);
             jumps_to_end.push(self.emit_jump());
-            self.patch_jump(jump_to_next);
+            if let Some(jump_to_next) = jump_to_next {
+                self.patch_jump(jump_to_next);
+            }
         }
 
         if !has_default {
+            self.emit_expr(Instruction::Pop { src: target }, span);
+            self.next_register = target;
             let fallback = self.emit_constant(Value::Empty)?;
-            self.emit_expr(Instruction::Move { dst, src: fallback }, span);
+            debug_assert_eq!(fallback, target);
         }
         for jump in jumps_to_end {
             self.patch_jump(jump);
         }
-        Ok(dst)
+        Ok(target)
     }
 
     /// Compiles a `for key, value in iter { ... }` loop.
@@ -1409,26 +1397,27 @@ impl Compiler {
         body: &[Statement],
     ) -> Result<(), CompileError> {
         let iterable = self.compile_expr(iter)?;
-        let iterator = self.alloc_register();
         if let Some(step) = step {
             let step_register = self.compile_expr(step)?;
             self.emit_expr(
                 Instruction::CountInit {
-                    dst: iterator,
+                    dst: iterable,
                     count: iterable,
                     step: Some(step_register),
                 },
                 iter,
             );
+            self.next_register = step_register;
         } else {
             self.emit_expr(
                 Instruction::IterInit {
-                    dst: iterator,
+                    dst: iterable,
                     iterable,
                 },
                 iter,
             );
         }
+        let iterator = iterable;
         let loop_start = self.chunk.code.len() as u32;
         let key_symbol = self.compile_for_binding_symbol(key, iter, "for key variable")?;
         let value_symbol = self.compile_for_binding_symbol(value, iter, "for value variable")?;
@@ -1444,13 +1433,14 @@ impl Compiler {
         );
         self.push_loop(label, loop_start);
         self.compile_block(body)?;
-        self.finish_loop(loop_start, None);
         self.emit_expr(Instruction::Jump { target: loop_start }, iter);
         let loop_end = self.chunk.code.len() as u32;
         if let Instruction::IterNext { jump_to_end, .. } = &mut self.chunk.code[iter_next] {
             *jump_to_end = loop_end;
         }
         self.patch_finished_loop(loop_end);
+        self.emit_expr(Instruction::Pop { src: iterator }, iter);
+        self.next_register = iterator;
         Ok(())
     }
 
@@ -1468,7 +1458,7 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         let count_register = self.compile_expr(count)?;
         let step_register = step.map(|step| self.compile_expr(step)).transpose()?;
-        let iterator = self.alloc_register();
+        let iterator = self.reuse_register(count_register);
         self.emit_expr(
             Instruction::CountInit {
                 dst: iterator,
@@ -1490,13 +1480,14 @@ impl Compiler {
         );
         self.push_loop(label, loop_start);
         self.compile_block(body)?;
-        self.finish_loop(loop_start, None);
         self.emit_expr(Instruction::Jump { target: loop_start }, count);
         let loop_end = self.chunk.code.len() as u32;
         if let Instruction::IterNext { jump_to_end, .. } = &mut self.chunk.code[iter_next] {
             *jump_to_end = loop_end;
         }
         self.patch_finished_loop(loop_end);
+        self.emit_expr(Instruction::Pop { src: iterator }, count);
+        self.next_register = iterator;
         Ok(())
     }
 
@@ -1530,7 +1521,7 @@ impl Compiler {
         } else {
             self.emit_constant(Value::Int(1))?
         };
-        let iterator = self.alloc_register();
+        let iterator = self.reuse_register(start_register);
         self.emit_expr(
             Instruction::RangeInit {
                 dst: iterator,
@@ -1555,13 +1546,14 @@ impl Compiler {
         );
         self.push_loop(label, loop_start);
         self.compile_block(body)?;
-        self.finish_loop(loop_start, None);
         self.emit_expr(Instruction::Jump { target: loop_start }, span);
         let loop_end = self.chunk.code.len() as u32;
         if let Instruction::IterNext { jump_to_end, .. } = &mut self.chunk.code[iter_next] {
             *jump_to_end = loop_end;
         }
         self.patch_finished_loop(loop_end);
+        self.emit_expr(Instruction::Pop { src: iterator }, span);
+        self.next_register = iterator;
         Ok(())
     }
 
@@ -1599,7 +1591,7 @@ impl Compiler {
         body: &[Statement],
     ) -> Result<(), CompileError> {
         let iterable = self.compile_expr(iter)?;
-        let iterator = self.alloc_register();
+        let iterator = iterable;
         self.emit_expr(
             Instruction::IterInit {
                 dst: iterator,
@@ -1630,7 +1622,6 @@ impl Compiler {
         );
         self.push_loop(label, loop_start);
         self.compile_block(body)?;
-        self.finish_loop(loop_start, None);
         self.emit_expr(Instruction::Jump { target: loop_start }, iter);
         let loop_end = self.chunk.code.len() as u32;
         if let Instruction::IterNextDestructure { jump_to_end, .. } =
@@ -1639,10 +1630,12 @@ impl Compiler {
             *jump_to_end = loop_end;
         }
         self.patch_finished_loop(loop_end);
+        self.emit_expr(Instruction::Pop { src: iterator }, iter);
+        self.next_register = iterator;
         Ok(())
     }
 
-    /// Compile property chain.
+    /// Evaluates a property chain in order, replacing each receiver with the property value.
     fn compile_property_chain(
         &mut self,
         items: &[PosExpr],
@@ -1651,17 +1644,23 @@ impl Compiler {
         let Some((first, rest)) = items.split_first() else {
             return Err(self.unsupported_expr(root));
         };
-        let mut object = self.compile_expr(first)?;
+        let object = self.compile_expr(first)?;
         for key_expr in rest {
             let key = self.compile_expr(key_expr)?;
-            let dst = self.alloc_register();
-            self.emit_expr(Instruction::GetProperty { dst, object, key }, key_expr);
-            object = dst;
+            self.emit_expr(
+                Instruction::GetProperty {
+                    dst: object,
+                    object,
+                    key,
+                },
+                key_expr,
+            );
+            self.next_register = key;
         }
         Ok(object)
     }
 
-    /// Compiled function value.
+    /// Compiles a nested chunk with its own temporary stack and creates a function value.
     fn compile_function_value(
         &mut self,
         name: &str,
@@ -1701,7 +1700,6 @@ impl Compiler {
             .collect::<Result<Vec<_>, CompileError>>()?;
         function_compiler.compile_function_body(body)?;
         function_compiler.chunk.emit(Instruction::Halt);
-        function_compiler.chunk.register_count = function_compiler.next_register;
         let function = FunctionChunk {
             name: name.to_string(),
             params,
@@ -1784,12 +1782,13 @@ impl Compiler {
         Ok(())
     }
 
-    /// Compiles a class definition value.
+    /// Compiles class members before replacing their temporary slots with the class value.
     fn compile_class_value(
         &mut self,
         name: &str,
         members: &indexmap::IndexMap<String, (bool, Statement)>,
     ) -> Result<Register, CompileError> {
+        let first = self.next_register;
         let mut compiled = Vec::with_capacity(members.len());
         for (member_name, (is_private, statement)) in members {
             let value = match statement {
@@ -1803,7 +1802,7 @@ impl Compiler {
             let symbol = self.chunk.symbols.intern(member_name);
             compiled.push((symbol, value, !*is_private));
         }
-        let dst = self.alloc_register();
+        let dst = self.reuse_register(first);
         let name = self.chunk.symbols.intern(name);
         self.chunk.emit(Instruction::MakeClass {
             dst,
@@ -1832,10 +1831,10 @@ impl Compiler {
         let target_ref = self.compile_assignment_target(target, None)?;
         let src = self.compile_expr(value)?;
         self.emit_assignment_store(&target_ref, src, target, true)?;
-        Ok(src)
+        Ok(self.finish_assignment(&target_ref, src, target))
     }
 
-    /// Compile compound assignment expressions.
+    /// Compiles a compound assignment with its target pinned until writeback.
     fn compile_compound_assign(
         &mut self,
         expr: &Expr,
@@ -1846,7 +1845,6 @@ impl Compiler {
         let target = self.compile_assignment_target(left, Some("Compound assignment"))?;
         let current = self.emit_assignment_load(&target, left)?;
         let value = self.compile_expr(right)?;
-        let dst = self.alloc_register();
         let op = match expr {
             Expr::PlusAssign(_, _) => crate::lexer::TokenKind::Plus,
             Expr::MinusAssign(_, _) => crate::lexer::TokenKind::Minus,
@@ -1863,14 +1861,14 @@ impl Compiler {
         self.emit_expr(
             Instruction::Binary {
                 op,
-                dst,
                 lhs: current,
                 rhs: value,
             },
             root,
         );
-        self.emit_assignment_store(&target, dst, left, false)?;
-        Ok(dst)
+        self.next_register = value;
+        self.emit_assignment_store(&target, current, left, false)?;
+        Ok(self.finish_assignment(&target, current, root))
     }
 
     /// Compiles prefix or postfix increment/decrement expressions.
@@ -1886,7 +1884,11 @@ impl Compiler {
     ) -> Result<Register, CompileError> {
         let target = self.compile_assignment_target(inner, Some("Increment or decrement"))?;
         let current = self.emit_assignment_load(&target, inner)?;
-        let updated = self.alloc_register();
+        let updated = if prefix {
+            current
+        } else {
+            self.alloc_register()
+        };
         self.emit_expr(
             Instruction::Increment {
                 dst: updated,
@@ -1896,14 +1898,14 @@ impl Compiler {
             root,
         );
         self.emit_assignment_store(&target, updated, inner, false)?;
-        Ok(if prefix { updated } else { current })
+        Ok(self.finish_assignment(&target, current, root))
     }
 
-    /// Compile short circuit logic expression.
+    /// Compiles a short-circuit expression whose left and right sides share a result slot.
     ///
     /// `&&`, `||`, and `??` emit jumps so the right-hand expression is evaluated only
-    /// when required. The destination initially holds the left operand and is
-    /// overwritten only when needed, preserving results such as `empty && value`.
+    /// when required. The jump preserves the left operand and its origin on the
+    /// taken path. Fallthrough releases the operand before evaluating the right.
     fn compile_short_circuit_expr(
         &mut self,
         left: &PosExpr,
@@ -1912,34 +1914,28 @@ impl Compiler {
         root: &PosExpr,
     ) -> Result<Register, CompileError> {
         let lhs = self.compile_expr(left)?;
-        let dst = self.alloc_register();
-        self.emit_expr(Instruction::Move { dst, src: lhs }, root);
-
-        match op {
-            TokenKind::And => {
-                let jump_to_end = self.emit_jump_if_false(lhs, left);
-                let rhs = self.compile_expr(right)?;
-                self.emit_expr(Instruction::Move { dst, src: rhs }, root);
-                self.patch_jump(jump_to_end);
-            }
-            TokenKind::Or => {
-                let jump_to_end = self.emit_jump_if_true(lhs, left);
-                let rhs = self.compile_expr(right)?;
-                self.emit_expr(Instruction::Move { dst, src: rhs }, root);
-                self.patch_jump(jump_to_end);
-            }
-            TokenKind::Coalesce => {
-                let jump_to_rhs = self.emit_jump_if_nullish(lhs, left);
-                let jump_to_end = self.emit_jump();
-                self.patch_jump(jump_to_rhs);
-                let rhs = self.compile_expr(right)?;
-                self.emit_expr(Instruction::Move { dst, src: rhs }, root);
-                self.patch_jump(jump_to_end);
-            }
+        let instruction = match op {
+            TokenKind::And => Instruction::KeepIfFalse {
+                condition: lhs,
+                target: 0,
+            },
+            TokenKind::Or => Instruction::KeepIfTrue {
+                condition: lhs,
+                target: 0,
+            },
+            TokenKind::Coalesce => Instruction::KeepIfNotNullish {
+                condition: lhs,
+                target: 0,
+            },
             _ => return Err(self.unsupported_expr(root)),
-        }
-
-        Ok(dst)
+        };
+        let jump_to_end = self.chunk.code.len();
+        self.emit_expr(instruction, left);
+        self.next_register = lhs;
+        let rhs = self.compile_expr(right)?;
+        debug_assert_eq!(lhs, rhs);
+        self.patch_jump(jump_to_end);
+        Ok(lhs)
     }
 
     /// Emits an unconditional jump for later patching.
@@ -1949,7 +1945,7 @@ impl Compiler {
         index
     }
 
-    /// Emits a conditional jump for later patching.
+    /// Emits a conditional jump that consumes its top-of-stack condition on both paths.
     fn emit_jump_if_false(&mut self, condition: Register, span: &PosExpr) -> usize {
         let index = self.chunk.code.len();
         self.emit_expr(
@@ -1959,47 +1955,14 @@ impl Compiler {
             },
             span,
         );
-        index
-    }
-
-    /// Write the instruction to be backfilled that jumps when the condition is true.
-    fn emit_jump_if_true(&mut self, condition: Register, span: &PosExpr) -> usize {
-        let index = self.chunk.code.len();
-        self.emit_expr(
-            Instruction::JumpIfTrue {
-                condition,
-                target: 0,
-            },
-            span,
-        );
-        index
-    }
-
-    /// Emits a patchable jump taken when the condition is `null` or `empty`.
-    fn emit_jump_if_nullish(&mut self, condition: Register, span: &PosExpr) -> usize {
-        let index = self.chunk.code.len();
-        self.emit_expr(
-            Instruction::JumpIfNullish {
-                condition,
-                target: 0,
-            },
-            span,
-        );
+        self.next_register = condition;
         index
     }
 
     /// Patches a jump target to the current instruction position.
     fn patch_jump(&mut self, index: usize) {
         let target = self.chunk.code.len() as u32;
-        match &mut self.chunk.code[index] {
-            Instruction::Jump { target: old }
-            | Instruction::JumpIfFalse { target: old, .. }
-            | Instruction::JumpIfTrue { target: old, .. }
-            | Instruction::JumpIfNullish { target: old, .. } => {
-                *old = target;
-            }
-            _ => {}
-        }
+        self.patch_jump_to(index, target);
     }
 
     /// Compile destructuring assignment target.
@@ -2143,20 +2106,50 @@ impl Compiler {
         Ok(())
     }
 
-    /// Enters a new loop context.
+    /// Releases assignment operands while keeping the result and its diagnostic origin.
+    fn finish_assignment(
+        &mut self,
+        target: &AssignmentTarget,
+        src: Register,
+        span: &PosExpr,
+    ) -> Register {
+        let dst = match target {
+            AssignmentTarget::Property { object, .. } => {
+                self.emit_expr(
+                    Instruction::Move {
+                        dst: *object,
+                        src,
+                        end: self.next_register,
+                    },
+                    span,
+                );
+                *object
+            }
+            AssignmentTarget::Binding { .. } => {
+                if self.next_register > src + 1 {
+                    // Postfix updates use one additional slot for the new number.
+                    self.emit_expr(Instruction::Pop { src: src + 1 }, span);
+                }
+                src
+            }
+        };
+        self.next_register = dst + 1;
+        dst
+    }
+
+    /// Records the stack and handler depth that must survive jumps to this loop.
     fn push_loop(&mut self, label: &str, continue_target: u32) {
         self.loop_stack.push(LoopContext {
             label: label.to_string(),
             continue_target,
+            register_depth: self.next_register,
+            try_depth: self.try_depth,
             breaks: Vec::new(),
             continues: Vec::new(),
         });
     }
 
-    /// Finishes the current loop body while retaining context for final jump patching.
-    fn finish_loop(&mut self, _continue_target: u32, _break_target: Option<u32>) {}
-
-    /// Compiles `break` or `continue` as a patchable jump.
+    /// Compiles `break` or `continue`, discarding only the state exited by the jump.
     fn compile_loop_jump(&mut self, label: &str, is_break: bool) -> Result<(), CompileError> {
         let Some(index) = self.find_loop_context(label) else {
             return Err(CompileError {
@@ -2170,7 +2163,15 @@ impl Compiler {
                 },
             });
         };
-        for _ in 0..self.try_depth {
+        let context = &self.loop_stack[index];
+        let start = context.register_depth;
+        if start < self.next_register {
+            self.chunk.emit(Instruction::ClearRegisters {
+                start,
+                end: self.next_register,
+            });
+        }
+        for _ in context.try_depth..self.try_depth {
             self.chunk.emit(Instruction::LeaveTry);
         }
         let jump = self.emit_jump();
@@ -2205,14 +2206,15 @@ impl Compiler {
         }
     }
 
-    /// Backfills a certain jump instruction to the specified target.
+    /// Patches an unconditional, consuming, or short-circuit jump to a known target.
     fn patch_jump_to(&mut self, index: usize, target: u32) {
         match self.chunk.code.get_mut(index) {
             Some(
                 Instruction::Jump { target: old }
                 | Instruction::JumpIfFalse { target: old, .. }
-                | Instruction::JumpIfTrue { target: old, .. }
-                | Instruction::JumpIfNullish { target: old, .. },
+                | Instruction::KeepIfFalse { target: old, .. }
+                | Instruction::KeepIfTrue { target: old, .. }
+                | Instruction::KeepIfNotNullish { target: old, .. },
             ) => *old = target,
             _ => {}
         }
@@ -2358,5 +2360,82 @@ impl Compiler {
             Expr::BitOrAssign(_, _) => "bit_or_assign",
             Expr::Match(_, _) => "match",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::tokenize;
+    use crate::parser::Parser;
+    use crate::vm::Vm;
+
+    /// Parses test source and compiles it with a final expression result.
+    fn compile_test(source: &str) -> Chunk {
+        let file = "registers.bt".to_string();
+        let mut parser = Parser::new(file, source, tokenize(source).collect());
+        let statements = parser.parse().expect("register test should parse");
+        Compiler::new()
+            .compile_returning_value(&statements)
+            .expect("register test should compile")
+    }
+
+    /// Register counts depend on simultaneous operands, even inside nested chunks.
+    #[test]
+    fn sequential_statements_reuse_temporary_slots() {
+        let sequential = "value = value + 1\n".repeat(2_048);
+        let chunk = compile_test(&format!("fn add(value) {{\n{sequential}value\n}}\nadd(0)"));
+        assert_eq!(chunk.register_count, 2);
+        assert_eq!(chunk.functions[0].chunk.register_count, 2);
+        let (_, value) = Vm::new().run_with_value(&chunk).expect("script should run");
+        assert_eq!(value, Value::Int(2_048));
+    }
+
+    /// Catch cleanup preserves earlier operands and ignores unrelated frame width.
+    #[test]
+    fn catch_clears_only_the_protected_range() {
+        let wide = "0,".repeat(255);
+        let chunk = compile_test(&format!(
+            "[{wide}0]\n['prefix', try {{ throw 'caught' }} catch err {{ err }}]"
+        ));
+        assert_eq!(chunk.register_count, 256);
+        let catch_target = chunk.code.iter().find_map(|instruction| match instruction {
+            Instruction::EnterTry { catch_target, .. } => Some(*catch_target as usize),
+            _ => None,
+        });
+        assert!(matches!(
+            chunk.code[catch_target.expect("expected a catch target")],
+            Instruction::ClearRegisters { start: 1, end: 2 }
+        ));
+        let (_, value) = Vm::new().run_with_value(&chunk).expect("script should run");
+        assert_eq!(value.to_json_string(), r#"["prefix","caught"]"#);
+    }
+
+    /// Loop jumps unwind inner handlers while retaining the enclosing handler and iterator.
+    #[test]
+    fn labeled_loop_jumps_preserve_enclosing_try() {
+        let chunk = compile_test(
+            r#"
+            total = 0
+            try {
+                for :outer value in [1, 2, 3] {
+                    for _ in [10] {
+                        try {
+                            total += value
+                            if value < 3 { continue :outer }
+                            break :outer
+                        } catch inner {
+                            throw 'incorrect inner handler'
+                        }
+                    }
+                }
+                throw total
+            } catch outer_error {
+                outer_error
+            }
+            "#,
+        );
+        let (_, value) = Vm::new().run_with_value(&chunk).expect("script should run");
+        assert_eq!(value, Value::Int(6));
     }
 }

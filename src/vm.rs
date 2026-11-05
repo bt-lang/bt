@@ -1,10 +1,10 @@
 //! BT register-based bytecode virtual machine.
 //!
-//! Executes compiled chunks with register values, local and closure cells, and synchronous library dispatch.
+//! Executes compiled chunks with register values, local slots, closure cells, and synchronous library dispatch.
 //! Web request frames add cooperative deadlines; ordinary CLI and desktop frames use the unchecked instruction loop.
 
 use crate::bytecode::{
-    Chunk, Instruction, Register, SourceSpan, SymbolId, BYTECODE_FORMAT_VERSION,
+    Chunk, FunctionParam, Instruction, Register, SourceSpan, SymbolId, BYTECODE_FORMAT_VERSION,
 };
 use crate::compiler::Compiler;
 #[cfg(feature = "extensions")]
@@ -131,18 +131,20 @@ struct ValueOrigin {
     missing: bool,
 }
 
-/// Maximum aggregate allocation retained by idle register buffers in one VM.
+/// Maximum aggregate allocation retained by idle frame buffers in one VM.
 const FRAME_POOL_BYTES: usize = 1024 * 1024;
 /// Maximum number of idle frames, independent of recursion depth.
 const FRAME_POOL_FRAMES: usize = 32;
 
-/// Reusable frame storage; idle buffers never retain script values or source origins.
+/// Reusable frame storage; idle buffers never retain script values, captures, or source origins.
 #[derive(Default)]
 struct FrameBuffers {
     /// Values addressed by bytecode registers.
     registers: Vec<Value>,
     /// Diagnostic provenance addressed by the same registers.
     origins: Vec<Option<ValueOrigin>>,
+    /// Function bindings addressed by bytecode symbols.
+    locals: LocalScope,
 }
 
 impl FrameBuffers {
@@ -150,6 +152,7 @@ impl FrameBuffers {
     fn capacity_bytes(&self) -> usize {
         self.registers.capacity() * std::mem::size_of::<Value>()
             + self.origins.capacity() * std::mem::size_of::<Option<ValueOrigin>>()
+            + self.locals.capacity() * std::mem::size_of::<LocalSlot>()
     }
 }
 
@@ -180,6 +183,7 @@ impl FramePool {
 
     /// Drops script references on every exit and retains only a bounded allocation budget.
     fn recycle(&mut self, mut frame: FrameBuffers) {
+        frame.locals.clear();
         frame.registers.clear();
         frame.origins.clear();
         let bytes = frame.capacity_bytes();
@@ -328,8 +332,121 @@ enum VmNetListenCallbacks {
     Ws(VmWsCallbacks),
 }
 
+/// Shared storage for one captured binding, including an uninitialized captured slot.
 type LocalCell = Rc<RefCell<Option<Value>>>;
-type LocalScope = Vec<Option<LocalCell>>;
+/// Dense capture table indexed by the child function's symbol IDs.
+type LocalCaptures = Vec<Option<LocalCell>>;
+/// Frame-owned storage indexed by the executing function's symbol IDs.
+type LocalScope = Vec<LocalSlot>;
+
+/// An ordinary binding owns its value until a closure first captures it.
+#[derive(Default)]
+enum LocalSlot {
+    /// No binding exists in this slot yet.
+    #[default]
+    Vacant,
+    /// An initialized binding whose value is owned by the current frame.
+    Inline(Value),
+    /// A binding accessible through one cell from the frame and its closures.
+    Shared(LocalCell),
+}
+
+impl LocalSlot {
+    /// Resolves a bound slot, with `empty` for an uninitialized shared binding.
+    fn read(&self) -> Option<Value> {
+        match self {
+            Self::Vacant => None,
+            Self::Inline(value) => Some(value.clone()),
+            Self::Shared(cell) => Some(cell.borrow().clone().unwrap_or(Value::Empty)),
+        }
+    }
+
+    /// Copies an initialized value for a template fragment's separate global environment.
+    fn clone_initialized(&self) -> Option<Value> {
+        match self {
+            Self::Vacant => None,
+            Self::Inline(value) => Some(value.clone()),
+            Self::Shared(cell) => cell.borrow().clone(),
+        }
+    }
+
+    /// Checks whether a constant slot has already been initialized, even with `empty`.
+    fn is_initialized(&self) -> bool {
+        match self {
+            Self::Vacant => false,
+            Self::Inline(_) => true,
+            Self::Shared(cell) => cell.borrow().is_some(),
+        }
+    }
+
+    /// Replaces a binding's value while preserving the identity of its shared cell.
+    fn write(&mut self, value: Value) {
+        match self {
+            Self::Shared(cell) => *cell.borrow_mut() = Some(value),
+            _ => *self = Self::Inline(value),
+        }
+    }
+
+    /// Promotes a live inline value once, then reuses the same cell for later captures.
+    fn capture(&mut self) -> Option<LocalCell> {
+        match self {
+            Self::Vacant => None,
+            Self::Inline(value) => {
+                let value = std::mem::replace(value, Value::Empty);
+                let cell = Rc::new(RefCell::new(Some(value)));
+                *self = Self::Shared(cell.clone());
+                Some(cell)
+            }
+            Self::Shared(cell) => Some(cell.clone()),
+        }
+    }
+}
+
+/// Inputs for populating a freshly acquired function frame's local scope.
+struct FunctionBindings<'a> {
+    /// Closure bindings already shared with the defining frame.
+    captures: Option<&'a [Option<LocalCell>]>,
+    /// Parameter symbols and optional literal defaults.
+    params: &'a [FunctionParam],
+    /// Owned arguments already read from the caller's registers.
+    args: Vec<Value>,
+    /// Receiver of a method invocation when present.
+    this_value: Option<Value>,
+}
+
+impl FunctionBindings<'_> {
+    /// Initializes a call's independent local scope, sharing only its inherited captures.
+    fn initialize(self, chunk: &Chunk, locals: &mut LocalScope) {
+        let len = chunk
+            .local_symbols
+            .len()
+            .max(self.captures.map_or(0, |captures| captures.len()));
+        locals.resize_with(len, LocalSlot::default);
+        if let Some(captures) = self.captures {
+            for (index, cell) in captures.iter().enumerate() {
+                if let Some(cell) = cell {
+                    if !chunk.is_local(index as SymbolId) {
+                        locals[index] = LocalSlot::Shared(cell.clone());
+                    }
+                }
+            }
+        }
+        // Move arguments into slots and copy mutable defaults for each call.
+        let mut args = self.args.into_iter();
+        for param in self.params {
+            let value = args
+                .next()
+                .or_else(|| param.default.as_ref().map(Value::clone_mutable_literal))
+                .unwrap_or(Value::Empty);
+            Vm::write_local(locals, param.symbol, value);
+        }
+        if let Some(value) = self.this_value {
+            if let Some(symbol) = chunk.symbols.id("this") {
+                Vm::write_local(locals, symbol, value);
+            }
+        }
+    }
+}
 
 /// Source frame currently executing in the VM.
 ///
@@ -1681,9 +1798,7 @@ impl Vm {
         })
     }
 
-    /// Implements global function calls.
-    ///
-    /// Public entrance is responsible for creating the execution context; here only the function owner parsing and specific calls are processed to facilitate internal reuse.
+    /// Resolves a callable in the global environment and dispatches it in the current context.
     fn call_global_inner(&mut self, name: &str, args: Vec<Value>) -> Result<Value, VmError> {
         let callable = self.global_value_for_name(name).ok_or_else(|| VmError {
             ip: 0,
@@ -1719,7 +1834,7 @@ impl Vm {
                 function_id,
                 args,
                 None,
-                Some(captures.as_ref().clone()),
+                Some(captures.as_slice()),
                 0,
             ),
             Value::NativeFunction(native_name) => {
@@ -1744,12 +1859,12 @@ impl Vm {
 
     /// Executes a bytecode chunk and selects request checkpoints once per call frame.
     ///
-    /// With no local scope this runs the main program against globals. With a local scope it runs a
-    /// function, reading and writing locals first and falling back to globals when a name is absent.
+    /// Functions initialize the acquired frame's local slots from their parameters and captures.
+    /// Other chunks run against globals without allocating local slots.
     fn execute_chunk(
         &mut self,
         chunk: &Chunk,
-        locals: Option<LocalScope>,
+        bindings: Option<FunctionBindings<'_>>,
         function_name: Option<String>,
         owner_hint: Option<Rc<Chunk>>,
     ) -> Result<ExecSignal, VmError> {
@@ -1758,6 +1873,10 @@ impl Vm {
         let previous_span = self.current_span.clone();
         self.current_function = function_name;
         let mut frame = self.frame_pool.acquire(chunk.register_count as usize + 1);
+        let locals = bindings.map(|bindings| {
+            bindings.initialize(chunk, &mut frame.locals);
+            &mut frame.locals
+        });
         self.active_frames += 1;
         let result = if self.execution_budget.is_some() {
             self.execute_chunk_inner::<true>(
@@ -1790,11 +1909,11 @@ impl Vm {
         result
     }
 
-    /// Executes bytecode with budget checks compiled out of ordinary CLI/App frames.
+    /// Executes bytecode in borrowed frame storage, with budget checks compiled out of CLI/App frames.
     fn execute_chunk_inner<const BOUNDED: bool>(
         &mut self,
         chunk: &Chunk,
-        mut locals: Option<LocalScope>,
+        mut locals: Option<&mut LocalScope>,
         owner_hint: Option<Rc<Chunk>>,
         mut registers: &mut [Value],
         mut origins: &mut [Option<ValueOrigin>],
@@ -1841,23 +1960,29 @@ impl Vm {
                                 self.error(ip, "template string source value must be a string")
                             );
                         };
-                        let text = self.expand_template(chunk, locals.as_ref(), template, ip)?;
+                        let text = self.expand_template(chunk, locals.as_deref(), template, ip)?;
                         Self::write_register(&mut registers, *dst, Value::Str(text), ip)?;
                         Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
-                    Instruction::Move { dst, src } => {
-                        let value = Self::read_register(&registers, *src, ip)?.clone();
-                        let origin = Self::read_origin(&origins, *src).cloned();
+                    Instruction::Move { dst, src, end } => {
+                        let origin = Self::read_origin(&origins, *src).copied();
+                        let value = Self::take_register(&mut registers, &mut origins, *src, ip)?;
+                        Self::clear_register_range(
+                            &mut registers,
+                            &mut origins,
+                            *dst + 1,
+                            *end,
+                            ip,
+                        )?;
                         Self::write_register(&mut registers, *dst, value, ip)?;
                         Self::write_origin(&mut origins, *dst, origin, ip)?;
                     }
                     Instruction::LoadGlobal { dst, symbol } => {
                         let name = Self::symbol_name(chunk, *symbol, ip)?;
-                        let local_value = locals.as_ref().and_then(|locals| {
+                        let local_value = locals.as_deref().and_then(|locals| {
                             locals
                                 .get(*symbol as usize)
-                                .and_then(Option::as_ref)
-                                .map(|cell| cell.borrow().clone().unwrap_or(Value::Empty))
+                                .and_then(LocalSlot::read)
                                 .or_else(|| chunk.is_local(*symbol).then_some(Value::Empty))
                         });
                         let resolved = local_value.or_else(|| match self.globals.get(name) {
@@ -1886,7 +2011,7 @@ impl Vm {
                         self.store_assignment_symbol(
                             chunk,
                             &mut chunk_owner,
-                            locals.as_mut(),
+                            locals.as_deref_mut(),
                             *symbol,
                             value,
                             ip,
@@ -1897,7 +2022,7 @@ impl Vm {
                         self.store_constant_symbol(
                             chunk,
                             &mut chunk_owner,
-                            locals.as_mut(),
+                            locals.as_deref_mut(),
                             *symbol,
                             value,
                             ip,
@@ -1912,14 +2037,14 @@ impl Vm {
                         self.destructure_assign(
                             chunk,
                             &mut chunk_owner,
-                            locals.as_mut(),
+                            locals.as_deref_mut(),
                             value,
                             symbols,
                             constants,
                             ip,
                         )?;
                     }
-                    Instruction::Binary { op, dst, lhs, rhs } => {
+                    Instruction::Binary { op, lhs, rhs } => {
                         let left = Self::read_register(&registers, *lhs, ip)?;
                         let right = Self::read_register(&registers, *rhs, ip)?;
                         let value = Self::eval_binary(op, left, right).map_err(|message| {
@@ -1934,8 +2059,15 @@ impl Vm {
                                 message,
                             )
                         })?;
-                        Self::write_register(&mut registers, *dst, value, ip)?;
-                        Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
+                        Self::clear_register(&mut registers, &mut origins, *rhs, ip)?;
+                        Self::write_register(&mut registers, *lhs, value, ip)?;
+                        Self::write_origin(&mut origins, *lhs, self.span_origin(ip), ip)?;
+                    }
+                    Instruction::MatchEqual { target, pattern } => {
+                        let target = Self::read_register(&registers, *target, ip)?;
+                        let value = target.equal(Self::read_register(&registers, *pattern, ip)?);
+                        Self::write_register(&mut registers, *pattern, value, ip)?;
+                        Self::write_origin(&mut origins, *pattern, self.span_origin(ip), ip)?;
                     }
                     Instruction::Increment { dst, src, delta } => {
                         let current = Self::read_register(&registers, *src, ip)?;
@@ -1977,7 +2109,12 @@ impl Vm {
                     Instruction::MakeArray { dst, items } => {
                         let mut values = Vec::with_capacity(items.len());
                         for item in items {
-                            values.push(Self::read_register(&registers, *item, ip)?.clone());
+                            values.push(Self::take_register(
+                                &mut registers,
+                                &mut origins,
+                                *item,
+                                ip,
+                            )?);
                         }
                         Self::write_register(
                             &mut registers,
@@ -1999,7 +2136,7 @@ impl Vm {
                                 .to_string();
                             values.insert(
                                 key,
-                                Self::read_register(&registers, *register, ip)?.clone(),
+                                Self::take_register(&mut registers, &mut origins, *register, ip)?,
                             );
                         }
                         Self::write_register(
@@ -2012,8 +2149,9 @@ impl Vm {
                     }
                     Instruction::GetProperty { dst, object, key } => {
                         let object_register = *object;
+                        let key_register = *key;
                         let object = Self::read_register(&registers, object_register, ip)?;
-                        let key = Self::read_register(&registers, *key, ip)?;
+                        let key = Self::read_register(&registers, key_register, ip)?;
                         let allow_private = Self::is_this_origin(
                             chunk,
                             Self::read_origin(&origins, object_register),
@@ -2021,6 +2159,9 @@ impl Vm {
                         let value = self
                             .get_property(object, key, allow_private)
                             .map_err(|message| self.error(ip, message))?;
+                        if *dst == object_register {
+                            Self::clear_register(&mut registers, &mut origins, key_register, ip)?;
+                        }
                         Self::write_register(&mut registers, *dst, value, ip)?;
                         Self::write_origin(&mut origins, *dst, self.span_origin(ip), ip)?;
                     }
@@ -2038,7 +2179,7 @@ impl Vm {
                     }
                     Instruction::MakeFunction { dst, function } => {
                         let function_id = *function as usize;
-                        let value = if let Some(parent_locals) = locals.as_ref() {
+                        let value = if let Some(parent_locals) = locals.as_deref_mut() {
                             let owner = chunk_owner
                                 .get_or_insert_with(|| Rc::new(chunk.clone()))
                                 .clone();
@@ -2074,7 +2215,12 @@ impl Vm {
                             values.insert(
                                 key,
                                 ClassMember {
-                                    value: Self::read_register(&registers, *register, ip)?.clone(),
+                                    value: Self::take_register(
+                                        &mut registers,
+                                        &mut origins,
+                                        *register,
+                                        ip,
+                                    )?,
                                     is_public: *is_public,
                                 },
                             );
@@ -2109,11 +2255,14 @@ impl Vm {
                     }
                     Instruction::CountInit { dst, count, step } => {
                         let count = Self::read_register(&registers, *count, ip)?;
-                        let step = step
+                        let step_value = step
                             .map(|register| Self::read_register(&registers, register, ip))
                             .transpose()?;
-                        let state = Self::make_count_iterator(count, step)
+                        let state = Self::make_count_iterator(count, step_value)
                             .map_err(|message| self.error(ip, message))?;
+                        if let Some(step) = step {
+                            Self::clear_register(&mut registers, &mut origins, *step, ip)?;
+                        }
                         Self::write_register(
                             &mut registers,
                             *dst,
@@ -2129,12 +2278,16 @@ impl Vm {
                         step,
                     } => {
                         let start = Self::read_register(&registers, *start, ip)?;
-                        let end = end
+                        let end_value = end
                             .map(|register| Self::read_register(&registers, register, ip))
                             .transpose()?;
-                        let step = Self::read_register(&registers, *step, ip)?;
-                        let state = Self::make_range_iterator(start, end, step)
+                        let step_value = Self::read_register(&registers, *step, ip)?;
+                        let state = Self::make_range_iterator(start, end_value, step_value)
                             .map_err(|message| self.error(ip, message))?;
+                        if let Some(end) = end {
+                            Self::clear_register(&mut registers, &mut origins, *end, ip)?;
+                        }
+                        Self::clear_register(&mut registers, &mut origins, *step, ip)?;
                         Self::write_register(
                             &mut registers,
                             *dst,
@@ -2164,10 +2317,10 @@ impl Vm {
                             return Ok(ExecStep::Jump(*jump_to_end as usize));
                         };
                         if let Some(symbol) = key_symbol {
-                            self.store_symbol(chunk, locals.as_mut(), *symbol, key, ip)?;
+                            self.store_symbol(chunk, locals.as_deref_mut(), *symbol, key, ip)?;
                         }
                         if let Some(symbol) = value_symbol {
-                            self.store_symbol(chunk, locals.as_mut(), *symbol, value, ip)?;
+                            self.store_symbol(chunk, locals.as_deref_mut(), *symbol, value, ip)?;
                         }
                     }
                     Instruction::IterNextDestructure {
@@ -2192,7 +2345,7 @@ impl Vm {
                         self.destructure_assign(
                             chunk,
                             &mut chunk_owner,
-                            locals.as_mut(),
+                            locals.as_deref_mut(),
                             &value,
                             symbols,
                             &[],
@@ -2200,14 +2353,21 @@ impl Vm {
                         )?;
                     }
                     Instruction::UseFields { object, fields } => {
-                        let object = Self::read_register(&registers, *object, ip)?;
-                        self.import_fields(chunk, locals.as_mut(), object, fields, ip)?;
+                        let object =
+                            Self::take_register(&mut registers, &mut origins, *object, ip)?;
+                        self.import_fields(chunk, locals.as_deref_mut(), &object, fields, ip)?;
                     }
                     Instruction::Call { dst, callee, args } => {
-                        let callee = Self::read_register(&registers, *callee, ip)?.clone();
+                        let callee =
+                            Self::take_register(&mut registers, &mut origins, *callee, ip)?;
                         let mut values = Vec::with_capacity(args.len());
                         for arg in args {
-                            values.push(Self::read_register(&registers, *arg, ip)?.clone());
+                            values.push(Self::take_register(
+                                &mut registers,
+                                &mut origins,
+                                *arg,
+                                ip,
+                            )?);
                         }
                         let value = self.call_value(chunk, &callee, values, ip)?;
                         Self::write_register(&mut registers, *dst, value, ip)?;
@@ -2217,22 +2377,30 @@ impl Vm {
                         return Ok(ExecStep::Jump(*target as usize));
                     }
                     Instruction::JumpIfFalse { condition, target } => {
-                        let condition = Self::read_register(&registers, *condition, ip)?;
-                        if !condition.is_truthy() {
+                        let truthy = Self::read_register(&registers, *condition, ip)?.is_truthy();
+                        Self::clear_register(&mut registers, &mut origins, *condition, ip)?;
+                        if !truthy {
                             return Ok(ExecStep::Jump(*target as usize));
                         }
                     }
-                    Instruction::JumpIfTrue { condition, target } => {
-                        let condition = Self::read_register(&registers, *condition, ip)?;
-                        if condition.is_truthy() {
+                    Instruction::KeepIfFalse { condition, target } => {
+                        if !Self::read_register(&registers, *condition, ip)?.is_truthy() {
                             return Ok(ExecStep::Jump(*target as usize));
                         }
+                        Self::clear_register(&mut registers, &mut origins, *condition, ip)?;
                     }
-                    Instruction::JumpIfNullish { condition, target } => {
-                        let condition = Self::read_register(&registers, *condition, ip)?;
-                        if matches!(condition, Value::Null | Value::Empty) {
+                    Instruction::KeepIfTrue { condition, target } => {
+                        if Self::read_register(&registers, *condition, ip)?.is_truthy() {
                             return Ok(ExecStep::Jump(*target as usize));
                         }
+                        Self::clear_register(&mut registers, &mut origins, *condition, ip)?;
+                    }
+                    Instruction::KeepIfNotNullish { condition, target } => {
+                        let value = Self::read_register(&registers, *condition, ip)?;
+                        if !matches!(value, Value::Null | Value::Empty) {
+                            return Ok(ExecStep::Jump(*target as usize));
+                        }
+                        Self::clear_register(&mut registers, &mut origins, *condition, ip)?;
                     }
                     Instruction::EnterTry {
                         catch_target,
@@ -2251,14 +2419,17 @@ impl Vm {
                         self.append_output(&value.to_output_string(), *newline, ip)?;
                     }
                     Instruction::Pop { src } => {
-                        let _ = Self::read_register(&registers, *src, ip)?;
+                        Self::clear_register(&mut registers, &mut origins, *src, ip)?;
+                    }
+                    Instruction::ClearRegisters { start, end } => {
+                        Self::clear_register_range(&mut registers, &mut origins, *start, *end, ip)?;
                     }
                     Instruction::Return { src } => {
-                        let value = Self::read_register(&registers, *src, ip)?.clone();
+                        let value = Self::take_register(&mut registers, &mut origins, *src, ip)?;
                         return Ok(ExecStep::Signal(ExecSignal::Return(value)));
                     }
                     Instruction::Throw { src } => {
-                        let value = Self::read_register(&registers, *src, ip)?.clone();
+                        let value = Self::take_register(&mut registers, &mut origins, *src, ip)?;
                         return Ok(ExecStep::Signal(ExecSignal::Throw(value)));
                     }
                     Instruction::Halt => return Ok(ExecStep::Signal(ExecSignal::Done)),
@@ -2268,7 +2439,13 @@ impl Vm {
             let step = match step {
                 Ok(ExecStep::Signal(ExecSignal::Throw(value))) => {
                     if let Some(handler) = try_stack.pop() {
-                        self.store_symbol(chunk, locals.as_mut(), handler.error_symbol, value, ip)?;
+                        self.store_symbol(
+                            chunk,
+                            locals.as_deref_mut(),
+                            handler.error_symbol,
+                            value,
+                            ip,
+                        )?;
                         ExecStep::Jump(handler.catch_target)
                     } else {
                         return Ok(ExecSignal::Throw(value));
@@ -2278,7 +2455,13 @@ impl Vm {
                 Err(err) if err.throw_value.is_some() => {
                     let value = err.throw_value.clone().unwrap_or(Value::Empty);
                     if let Some(handler) = try_stack.pop() {
-                        self.store_symbol(chunk, locals.as_mut(), handler.error_symbol, value, ip)?;
+                        self.store_symbol(
+                            chunk,
+                            locals.as_deref_mut(),
+                            handler.error_symbol,
+                            value,
+                            ip,
+                        )?;
                         ExecStep::Jump(handler.catch_target)
                     } else {
                         return Err(err);
@@ -2551,7 +2734,7 @@ impl Vm {
         }
     }
 
-    /// Collects global and local variables visible when the template is executed.
+    /// Copies globals and initialized local bindings for a template fragment.
     fn capture_template_globals_from(
         &self,
         chunk: &Chunk,
@@ -2559,11 +2742,8 @@ impl Vm {
     ) -> HashMap<String, Value> {
         let mut globals = self.globals.clone();
         if let Some(locals) = locals {
-            for index in 0..locals.len() {
-                let Some(cell) = locals.get(index).and_then(Option::as_ref) else {
-                    continue;
-                };
-                let Some(value) = cell.borrow().clone() else {
+            for (index, slot) in locals.iter().enumerate() {
+                let Some(value) = slot.clone_initialized() else {
                     continue;
                 };
                 if let Some(name) = chunk.symbols.name(index as SymbolId) {
@@ -2574,7 +2754,7 @@ impl Vm {
         globals
     }
 
-    /// Directly evaluates constants or variables in the template.
+    /// Directly evaluates template literals and bound variables without compiling a fragment.
     fn eval_template_literal_or_variable(
         &self,
         chunk: &Chunk,
@@ -2602,16 +2782,12 @@ impl Vm {
         if !Self::is_template_identifier(code) {
             return None;
         }
-        if let Some(locals) = locals {
-            for index in 0..locals.len() {
-                if chunk.symbols.name(index as SymbolId) == Some(code) {
-                    if let Some(cell) = locals.get(index).and_then(Option::as_ref) {
-                        return cell.borrow().clone().or(Some(Value::Empty));
-                    }
-                }
-            }
-        }
-        self.globals.get(code).cloned().or(Some(Value::Empty))
+        let local = locals
+            .and_then(|locals| locals.get(chunk.symbols.id(code)? as usize))
+            .and_then(LocalSlot::read);
+        local
+            .or_else(|| self.globals.get(code).cloned())
+            .or(Some(Value::Empty))
     }
 
     /// Reads a simple quoted string constant.
@@ -3363,7 +3539,7 @@ impl Vm {
         }
     }
 
-    /// Calls the function value or built-in placeholder method.
+    /// Calls a function value, borrowing its capture table when it has an enclosing scope.
     fn call_value(
         &mut self,
         chunk: &Chunk,
@@ -3381,7 +3557,7 @@ impl Vm {
                 *function_id,
                 args,
                 None,
-                Some(captures.as_ref().clone()),
+                Some(captures.as_slice()),
                 ip,
             ),
             Value::NativeFunction(name) => self.call_native_function(chunk, name, args, ip),
@@ -3519,14 +3695,17 @@ impl Vm {
         self.call_user_function_inner(chunk, function_id, args, Some(this_value), None, ip)
     }
 
-    /// Captures the outer local variable with the same name according to the sub-function symbol slot.
+    /// Shares already-bound parent slots with the child, indexed by the child's symbols.
+    ///
+    /// Vacant slots stay vacant so closure creation does not change when a name can fall back
+    /// to globals. The child also keeps its own declared locals independent of its parent.
     fn capture_function_locals(
         parent_chunk: &Chunk,
-        parent_locals: &LocalScope,
+        parent_locals: &mut LocalScope,
         function_chunk: &Chunk,
-    ) -> LocalScope {
+    ) -> LocalCaptures {
         let mut captures = vec![None; function_chunk.symbols.len()];
-        for slot in 0..captures.len() {
+        for (slot, capture) in captures.iter_mut().enumerate() {
             if function_chunk.is_local(slot as SymbolId) {
                 continue;
             }
@@ -3536,49 +3715,38 @@ impl Vm {
             let Some(parent_slot) = parent_chunk.symbols.id(name).map(|id| id as usize) else {
                 continue;
             };
-            if let Some(cell) = parent_locals.get(parent_slot).and_then(Option::as_ref) {
-                captures[slot] = Some(cell.clone());
-            }
+            *capture = parent_locals
+                .get_mut(parent_slot)
+                .and_then(LocalSlot::capture);
         }
         captures
     }
 
-    /// Reads the shared variable slot in the current scope.
-    fn local_cell(locals: &LocalScope, symbol: SymbolId) -> Option<LocalCell> {
-        locals
-            .get(symbol as usize)
-            .and_then(Option::as_ref)
-            .cloned()
+    /// Resolves writes to declared locals or bindings already present in the frame.
+    fn resolves_local(chunk: &Chunk, locals: &LocalScope, symbol: SymbolId) -> bool {
+        chunk.is_local(symbol)
+            || locals
+                .get(symbol as usize)
+                .is_some_and(|slot| !matches!(slot, LocalSlot::Vacant))
     }
 
-    /// Determines whether the current local slot has been written with a value.
-    fn local_cell_has_value(locals: &LocalScope, symbol: SymbolId) -> bool {
-        locals
-            .get(symbol as usize)
-            .and_then(Option::as_ref)
-            .is_some_and(|cell| cell.borrow().is_some())
-    }
-
-    /// Writes a slot in the current function's local scope.
-    fn write_local_cell(locals: &mut LocalScope, symbol: SymbolId, value: Value) {
+    /// Writes a binding, extending the scope for a receiver outside the declared local range.
+    fn write_local(locals: &mut LocalScope, symbol: SymbolId, value: Value) {
         let index = symbol as usize;
         if index >= locals.len() {
-            locals.resize(index + 1, None);
+            locals.resize_with(index + 1, LocalSlot::default);
         }
-        let cell = locals[index]
-            .get_or_insert_with(|| Rc::new(RefCell::new(None)))
-            .clone();
-        *cell.borrow_mut() = Some(value);
+        locals[index].write(value);
     }
 
-    /// Executes a user function, moving supplied arguments into independent local cells.
+    /// Executes a user function in a new frame, borrowing its inherited capture table.
     fn call_user_function_inner(
         &mut self,
         chunk: &Chunk,
         function_id: usize,
         args: Vec<Value>,
         this_value: Option<Value>,
-        captures: Option<LocalScope>,
+        captures: Option<&[Option<LocalCell>]>,
         ip: usize,
     ) -> Result<Value, VmError> {
         let function = chunk.functions.get(function_id).ok_or_else(|| VmError {
@@ -3588,38 +3756,18 @@ impl Vm {
             function: self.current_function.clone(),
             throw_value: None,
         })?;
-        // Dense symbol slots share cells only with escaped closures. Missing capture slots can
-        // fall back to globals; declared locals and absent parameters still read as `empty`.
-        let mut locals = captures.unwrap_or_else(|| vec![None; function.chunk.symbols.len()]);
-        if locals.len() < function.chunk.symbols.len() {
-            locals.resize(function.chunk.symbols.len(), None);
-        }
-        for index in 0..function.chunk.local_symbols.len().min(locals.len()) {
-            if function.chunk.local_symbols[index] {
-                locals[index] = None;
-            }
-        }
-        // The caller already cloned evaluated arguments from its registers. Move those owned
-        // values into parameters instead of copying string payloads a second time.
-        let mut args = args.into_iter();
-        for param in &function.params {
-            let value = args
-                .next()
-                .or_else(|| param.default.as_ref().map(Value::clone_mutable_literal))
-                .unwrap_or(Value::Empty);
-            Self::write_local_cell(&mut locals, param.symbol, value);
-        }
-        if let Some(this_value) = this_value {
-            if let Some(symbol) = function.chunk.symbols.id("this") {
-                Self::write_local_cell(&mut locals, symbol, this_value);
-            }
-        }
+        let bindings = FunctionBindings {
+            captures,
+            params: &function.params,
+            args,
+            this_value,
+        };
         let function_name = if function.name.is_empty() {
             None
         } else {
             Some(function.name.clone())
         };
-        match self.execute_chunk(&function.chunk, Some(locals), function_name, None)? {
+        match self.execute_chunk(&function.chunk, Some(bindings), function_name, None)? {
             ExecSignal::Return(value) => Ok(value),
             ExecSignal::Exit(value) => Ok(value),
             ExecSignal::Throw(value) => Err(self.throw_error(ip, value)),
@@ -3875,8 +4023,8 @@ impl Vm {
 
     /// Writes a variable symbol according to ordinary assignment rules.
     ///
-    /// Destructuring uses the same scope path as `name = value`: functions write to local slots first,
-    /// while top-level assignments write to globals and record the owner chunk for function values.
+    /// Functions write to declared or captured bindings first. Top-level assignments also record
+    /// the owner chunk for function values.
     fn store_assignment_symbol(
         &mut self,
         chunk: &Chunk,
@@ -3887,10 +4035,8 @@ impl Vm {
         ip: usize,
     ) -> Result<(), VmError> {
         if let Some(locals) = locals {
-            if chunk.is_local(symbol) {
-                Self::write_local_cell(locals, symbol, value);
-            } else if let Some(cell) = Self::local_cell(locals, symbol) {
-                *cell.borrow_mut() = Some(value);
+            if Self::resolves_local(chunk, locals, symbol) {
+                Self::write_local(locals, symbol, value);
             } else {
                 let name = Self::symbol_name(chunk, symbol, ip)?.to_string();
                 if self.global_constants.contains(&name) || Self::is_native_constant_name(&name) {
@@ -3904,10 +4050,7 @@ impl Vm {
         Ok(())
     }
 
-    /// Writes variable symbols according to constant definition rules.
-    ///
-    /// Top-level constants are written into the global constant collection; constants within functions are written into the current function's own local slot and checked before writing.
-    /// Whether there is a global variable or constant with the same name. This function only serves `StoreConst`, ordinary variable assignment will not enter here.
+    /// Defines a constant after checking the global namespace and the current binding slot.
     fn store_constant_symbol(
         &mut self,
         chunk: &Chunk,
@@ -3928,24 +4071,17 @@ impl Vm {
                     format!("constant `{}` has been defined in the global scope", name),
                 ));
             }
-            if chunk.is_local(symbol) {
-                if Self::local_cell_has_value(locals, symbol) {
+            if Self::resolves_local(chunk, locals, symbol) {
+                if locals
+                    .get(symbol as usize)
+                    .is_some_and(LocalSlot::is_initialized)
+                {
                     return Err(self.error(
                         ip,
                         format!("constant `{}` cannot be defined repeatedly", name),
                     ));
                 }
-                Self::write_local_cell(locals, symbol, value);
-                return Ok(());
-            }
-            if let Some(cell) = Self::local_cell(locals, symbol) {
-                if cell.borrow().is_some() {
-                    return Err(self.error(
-                        ip,
-                        format!("constant `{}` cannot be defined repeatedly", name),
-                    ));
-                }
-                *cell.borrow_mut() = Some(value);
+                Self::write_local(locals, symbol, value);
                 return Ok(());
             }
             self.store_global_constant_symbol(chunk, chunk_owner, symbol, value, ip)?;
@@ -4081,9 +4217,8 @@ impl Vm {
 
     /// Writes symbols to the current scope.
     ///
-    /// The main program writes to globals. When a function or loop has a local scope, that scope is
-    /// updated first. Resolving the name through the current chunk's symbol pool keeps symbol IDs
-    /// from different function chunks independent.
+    /// Loop and exception handlers update the current binding when it resolves to a local slot.
+    /// Other bindings go to the global table of the executing VM.
     fn store_symbol(
         &mut self,
         chunk: &Chunk,
@@ -4093,32 +4228,23 @@ impl Vm {
         ip: usize,
     ) -> Result<(), VmError> {
         if let Some(locals) = locals {
-            if chunk.is_local(symbol) {
-                Self::write_local_cell(locals, symbol, value);
-            } else if let Some(cell) = Self::local_cell(locals, symbol) {
-                *cell.borrow_mut() = Some(value);
-            } else {
-                let name = Self::symbol_name(chunk, symbol, ip)?.to_string();
-                if self.global_constants.contains(&name) || Self::is_native_constant_name(&name) {
-                    return Err(self.error(ip, format!("constant `{}` cannot be reassigned", name)));
-                }
-                self.globals.insert(name, value);
+            if Self::resolves_local(chunk, locals, symbol) {
+                Self::write_local(locals, symbol, value);
+                return Ok(());
             }
-        } else {
-            let name = Self::symbol_name(chunk, symbol, ip)?.to_string();
-            if self.global_constants.contains(&name) || Self::is_native_constant_name(&name) {
-                return Err(self.error(ip, format!("constant `{}` cannot be reassigned", name)));
-            }
-            self.globals.insert(name, value);
         }
+        let name = Self::symbol_name(chunk, symbol, ip)?.to_string();
+        if self.global_constants.contains(&name) || Self::is_native_constant_name(&name) {
+            return Err(self.error(ip, format!("constant `{}` cannot be reassigned", name)));
+        }
+        self.globals.insert(name, value);
         Ok(())
     }
 
     /// Writes a value to the current scope by field name.
     ///
-    /// Fields imported by `use obj` come from a runtime object. If a field already has a symbol in
-    /// the current function chunk, it is written to the matching local slot; otherwise it falls back
-    /// to the global environment.
+    /// Fields imported by `use obj` come from a runtime object. A declared local or captured
+    /// binding takes precedence over the global environment.
     fn store_symbol_name(
         &mut self,
         chunk: &Chunk,
@@ -4132,12 +4258,8 @@ impl Vm {
         })?;
         if let Some(locals) = locals.as_mut() {
             if let Some(symbol) = chunk.symbols.id(name) {
-                if chunk.is_local(symbol) {
-                    Self::write_local_cell(locals, symbol, value);
-                    return Ok(());
-                }
-                if let Some(cell) = Self::local_cell(locals, symbol) {
-                    *cell.borrow_mut() = Some(value);
+                if Self::resolves_local(chunk, locals, symbol) {
+                    Self::write_local(locals, symbol, value);
                     return Ok(());
                 }
             }
@@ -4286,7 +4408,7 @@ impl Vm {
         }
     }
 
-    /// Calls the built-in method of the bound receiver.
+    /// Dispatches a method on a bound receiver, including closures stored in objects.
     fn call_native_method(
         &mut self,
         chunk: &Chunk,
@@ -4344,7 +4466,7 @@ impl Vm {
                                 function_id,
                                 args,
                                 Some(receiver.clone()),
-                                Some(captures.as_ref().clone()),
+                                Some(captures.as_slice()),
                                 ip,
                             ),
                         _ => Ok(Value::Null),
@@ -7343,7 +7465,7 @@ impl Vm {
         Ok(output)
     }
 
-    /// Creates a background task entry snapshot.
+    /// Creates a background task entry snapshot without sharing closure cells across threads.
     fn snapshot_task_function(
         &self,
         chunk: &Chunk,
@@ -7471,7 +7593,7 @@ impl Vm {
         }
     }
 
-    /// Performs task snapshots in a background thread.
+    /// Reconstructs an isolated function and runs it on a background thread.
     fn run_task_snapshot(snapshot: TaskFunctionSnapshot) -> TaskRunOutcome {
         let owner = Rc::new(snapshot.owner.to_chunk());
         let mut vm = Vm::with_project_root(snapshot.project_root);
@@ -7487,8 +7609,14 @@ impl Vm {
             .into_iter()
             .map(|value| value.to_value())
             .collect();
-        let result =
-            vm.call_user_function_inner(&owner, snapshot.function_id, args, None, captures, 0);
+        let result = vm.call_user_function_inner(
+            &owner,
+            snapshot.function_id,
+            args,
+            None,
+            captures.as_deref(),
+            0,
+        );
         vm.flush_output_to_stdout();
         match result {
             Ok(value) => TaskValueSnapshot::from_value(&value)
@@ -7516,8 +7644,8 @@ impl Vm {
         }
     }
 
-    /// Restores the closure capture slot to local scope within the current background VM.
-    fn restore_task_captures(snapshot: TaskCaptureScopeSnapshot) -> LocalScope {
+    /// Restores the closure's capture table with fresh cells owned by the background VM.
+    fn restore_task_captures(snapshot: TaskCaptureScopeSnapshot) -> LocalCaptures {
         snapshot
             .slots
             .into_iter()
@@ -7592,7 +7720,7 @@ impl Vm {
         }
     }
 
-    /// Calls the callback in the array higher-order function.
+    /// Calls an array callback while borrowing any inherited capture table.
     fn call_callback(
         &mut self,
         chunk: &Chunk,
@@ -7610,7 +7738,7 @@ impl Vm {
                 *function_id,
                 args,
                 None,
-                Some(captures.as_ref().clone()),
+                Some(captures.as_slice()),
                 ip,
             ),
             #[cfg(feature = "extensions")]
@@ -7649,6 +7777,59 @@ impl Vm {
             function: None,
             throw_value: None,
         })
+    }
+
+    /// Moves an operand out of the frame and removes its diagnostic origin.
+    fn take_register(
+        registers: &mut [Value],
+        origins: &mut [Option<ValueOrigin>],
+        register: Register,
+        ip: usize,
+    ) -> Result<Value, VmError> {
+        let slot = registers
+            .get_mut(register as usize)
+            .ok_or_else(|| VmError {
+                ip,
+                message: format!("read register r{} out of bounds", register),
+                span: None,
+                function: None,
+                throw_value: None,
+            })?;
+        origins[register as usize] = None;
+        Ok(std::mem::replace(slot, Value::Empty))
+    }
+
+    /// Drops a consumed value and clears the corresponding diagnostic origin.
+    fn clear_register(
+        registers: &mut [Value],
+        origins: &mut [Option<ValueOrigin>],
+        register: Register,
+        ip: usize,
+    ) -> Result<(), VmError> {
+        Self::write_register(registers, register, Value::Empty, ip)?;
+        origins[register as usize] = None;
+        Ok(())
+    }
+
+    /// Clears the register suffix abandoned by a transfer or assignment writeback.
+    fn clear_register_range(
+        registers: &mut [Value],
+        origins: &mut [Option<ValueOrigin>],
+        start: Register,
+        end: Register,
+        ip: usize,
+    ) -> Result<(), VmError> {
+        let range = start as usize..end as usize;
+        let values = registers.get_mut(range.clone()).ok_or_else(|| VmError {
+            ip,
+            message: format!("clear registers r{}..r{} out of bounds", start, end),
+            span: None,
+            function: None,
+            throw_value: None,
+        })?;
+        values.fill_with(|| Value::Empty);
+        origins[range].fill(None);
+        Ok(())
     }
 
     /// Reads the symbol name according to the symbol pool of the current chunk.
@@ -8469,19 +8650,32 @@ mod tests {
         let object = Rc::new(RefCell::new(IndexMap::new()));
         let weak = Rc::downgrade(&object);
         frame.registers[0] = Value::Object(object);
+        let local_object = Rc::new(RefCell::new(IndexMap::new()));
+        let weak_local = Rc::downgrade(&local_object);
+        frame
+            .locals
+            .push(LocalSlot::Inline(Value::Object(local_object)));
+        let cell = Rc::new(RefCell::new(Some(Value::Null)));
+        let weak_capture = Rc::downgrade(&cell);
+        frame.locals.push(LocalSlot::Shared(cell));
         frame.origins[0] = Some(ValueOrigin {
             span: 99,
             variable: None,
             missing: true,
         });
         let allocation = frame.registers.as_ptr();
+        let local_allocation = frame.locals.as_ptr();
         pool.recycle(frame);
         assert!(
             weak.upgrade().is_none(),
             "idle frames must not retain objects"
         );
+        assert!(weak_local.upgrade().is_none());
+        assert!(weak_capture.upgrade().is_none());
         let frame = pool.acquire(4);
         assert_eq!(allocation, frame.registers.as_ptr());
+        assert_eq!(local_allocation, frame.locals.as_ptr());
+        assert!(frame.locals.is_empty());
         assert!(frame
             .registers
             .iter()
@@ -8498,6 +8692,10 @@ mod tests {
         assert_eq!(pool.idle.len(), FRAME_POOL_FRAMES);
         let oversized = pool.acquire(FRAME_POOL_BYTES / std::mem::size_of::<Value>() + 1);
         pool.recycle(oversized);
+        let mut oversized_locals = pool.acquire(1);
+        oversized_locals.locals =
+            Vec::with_capacity(FRAME_POOL_BYTES / std::mem::size_of::<LocalSlot>() + 1);
+        pool.recycle(oversized_locals);
         assert!(pool.bytes <= FRAME_POOL_BYTES);
         assert_eq!(
             pool.bytes,
@@ -8506,6 +8704,45 @@ mod tests {
                 .map(FrameBuffers::capacity_bytes)
                 .sum::<usize>()
         );
+    }
+
+    /// Parameters use frame storage, and each captured binding is promoted at most once.
+    #[test]
+    fn local_slots_allocate_cells_only_on_capture() {
+        let entry = compile_test_entry(
+            "fn outer(bound, inline, missing) { fn inner() { [bound, later] }; let later = 3; inner }",
+        );
+        let outer = &entry.functions[0];
+        let chunk = &outer.chunk;
+        let inner = &chunk.functions[0].chunk;
+        let mut locals = LocalScope::new();
+        FunctionBindings {
+            captures: None,
+            params: &outer.params,
+            args: vec![Value::Null, Value::Int(42)],
+            this_value: None,
+        }
+        .initialize(chunk, &mut locals);
+        let bound = chunk.symbols.id("bound").unwrap();
+        let inline = chunk.symbols.id("inline").unwrap() as usize;
+        let missing = chunk.symbols.id("missing").unwrap() as usize;
+        let later = chunk.symbols.id("later").unwrap() as usize;
+        assert!(matches!(
+            locals[bound as usize],
+            LocalSlot::Inline(Value::Null)
+        ));
+        assert!(matches!(locals[inline], LocalSlot::Inline(Value::Int(42))));
+        assert!(matches!(locals[missing], LocalSlot::Inline(Value::Empty)));
+        let first = Vm::capture_function_locals(chunk, &mut locals, inner);
+        let second = Vm::capture_function_locals(chunk, &mut locals, inner);
+        let captured = inner.symbols.id("bound").unwrap() as usize;
+        let cell = first[captured].as_ref().unwrap();
+        assert!(Rc::ptr_eq(cell, second[captured].as_ref().unwrap()));
+        assert!(matches!(locals[inline], LocalSlot::Inline(Value::Int(42))));
+        assert!(matches!(locals[later], LocalSlot::Vacant));
+        assert!(first[inner.symbols.id("later").unwrap() as usize].is_none());
+        Vm::write_local(&mut locals, bound, Value::Int(7));
+        assert_eq!(*cell.borrow(), Some(Value::Int(7)));
     }
 
     /// Recursive calls and escaped captures remain independent after sequential frame reuse.
@@ -8523,6 +8760,56 @@ sum(3) === 6 && a() === 11 && b() === 21 && a() === 12 && defaults() === 1 && de
 "#
             ),
             Value::Bool(true)
+        );
+    }
+
+    /// Local imports, templates, and closures observe the same binding across promotion.
+    #[test]
+    fn promoted_locals_preserve_binding_and_capture_timing() {
+        assert_eq!(
+            run_test_source(
+                r#"
+state = 30
+fn setup(value, unset) {
+    fn before() { state }
+    let state = value
+    let inline = 4
+    fn add(step) { state += step; state }
+    fn inspect() { [state, is_empty(unset), `${state}:${state + 1}`] }
+    let fields = {state: 2, inline: 9}
+    use fields
+    [before(), add(3), inspect(), inline, `${inline}:${inline + 1}`]
+}
+result = setup(7)
+assert(state === 30)
+json(result)
+"#
+            ),
+            Value::Str(r#"[30,5,[5,true,"5:6"],9,"9:10"]"#.to_string())
+        );
+    }
+
+    /// A captured callable can recur through its binding and release it after the final call.
+    #[test]
+    fn promoted_binding_supports_recursive_closure_calls() {
+        assert_eq!(
+            run_test_source(
+                r#"
+fn recursive(seed) {
+    let again = empty
+    fn call(depth) {
+        if depth == 0 { return seed }
+        again(depth - 1) + 1
+    }
+    again = call
+    let result = call(3)
+    again = empty
+    result
+}
+recursive(7)
+"#
+            ),
+            Value::Int(10)
         );
     }
 
@@ -8544,7 +8831,9 @@ sum(3) === 6 && a() === 11 && b() === 21 && a() === 12 && defaults() === 1 && de
                 .frame_pool
                 .idle
                 .iter()
-                .all(|frame| frame.registers.is_empty() && frame.origins.is_empty()));
+                .all(|frame| frame.registers.is_empty()
+                    && frame.origins.is_empty()
+                    && frame.locals.is_empty()));
         }
         let mut vm = Vm::new();
         let budget = crate::io::ExecutionBudget::new(Duration::ZERO).unwrap();
@@ -9752,23 +10041,30 @@ json([main_before, x, result])
         assert_eq!(value, Value::Str("[1,1,2]".to_string()));
     }
 
-    /// Closure should be snapshotted at task() creation time.
+    /// Tasks snapshot promoted captures, including mutable data, missing parameters, and nulls.
     #[test]
     fn task_closure_captures_are_snapshotted() {
         let value = run_test_source(
             r#"
-fn make_task() {
-    let x = 10
-    return task(fn() {
-        return x + 1
-    })
+fn make_task(missing) {
+    let state = [10]
+    let explicit = null
+    fn step(addend) {
+        state.push(addend)
+        [state, is_empty(missing), is_null(explicit)]
+    }
+    let pending = task(step, 2)
+    state[0] = 11
+    [pending.await(), step(3)]
 }
-t = make_task()
-t.await()
+json(make_task())
 "#,
         );
 
-        assert_eq!(value, Value::Int(11));
+        assert_eq!(
+            value,
+            Value::Str("[[[10,2],true,true],[[11,3],true,true]]".to_string())
+        );
     }
 
     /// Arrays and objects should be recursively deep-snapshotted when entering the task, and background modifications will not affect the main VM.
